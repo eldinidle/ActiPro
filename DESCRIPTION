@@ -1,11 +1,11 @@
 Package: ActiPro
 Type: Package
-Title: What the Package Does (Title Case)
+Title: Process files created by ActiGraph Link ActiLife
 Version: 0.1.0
-Author: Who wrote it
-Maintainer: The package maintainer <yourself@somewhere.net>
-Description: More about what it does (maybe more than one line)
+Author: Eldin Dzubur, PhD
+Maintainer: Eldin Dzubur, PhD <eldind@gmail.com>
+Description: This package uses 
     Use four spaces when indenting paragraphs within the Description.
-License: What license is it under?
+License: GNU AGPLv3
 Encoding: UTF-8
 LazyData: true

@@ -3,6 +3,7 @@ library("progress")
 library("parallel")
 library("foreach")
 library("doParallel")
+library("iterators")
 
 ## Function
 # Input: Acc Stream Vector, Break Acc Stream Vector, Epoch Length
@@ -51,11 +52,17 @@ actigraph_metadata <- function(file_location) {
   meta8 <- data.frame(strsplit(meta_t[1,8], " "), stringsAsFactors = FALSE)
   meta9 <- data.frame(strsplit(meta_t[1,9], " "), stringsAsFactors = FALSE)
 
-  meta_actigraph <-    meta1[which(meta1 == "ActiGraph", arr.ind = TRUE)[1,1]+1,1]
-  meta_actilife <-     meta1[which(meta1 == "ActiLife", arr.ind = TRUE)[1,1]+1,1]
-  meta_firmware <-     meta1[which(meta1 == "Firmware", arr.ind = TRUE)[1,1]+1,1]
-  meta_format <-       meta1[which(meta1 == "format", arr.ind = TRUE)[1,1]+1,1]
-  meta_filter <-       meta1[which(meta1 == "Filter", arr.ind = TRUE)[1,1]+1,1]
+
+  meta_actigraph <-    ifelse(length(which(meta1 == "ActiGraph", arr.ind = TRUE)) > 0,
+                              meta1[which(meta1 == "ActiGraph", arr.ind = TRUE)[1,1]+1,1],"NA")
+  meta_actilife <-     ifelse(length(which(meta1 == "ActiLife", arr.ind = TRUE)) > 0,
+                              meta1[which(meta1 == "ActiLife", arr.ind = TRUE)[1,1]+1,1],"NA")
+  meta_firmware <-     ifelse(length(which(meta1 == "Firmware", arr.ind = TRUE)) > 0,
+                              meta1[which(meta1 == "Firmware", arr.ind = TRUE)[1,1]+1,1],"NA")
+  meta_format <-       ifelse(length(which(meta1 == "format", arr.ind = TRUE)) > 0,
+                              meta1[which(meta1 == "format", arr.ind = TRUE)[1,1]+1,1],"NA")
+  meta_filter <-       ifelse(length(which(meta1 == "Filter", arr.ind = TRUE)) > 0,
+                              meta1[which(meta1 == "Filter", arr.ind = TRUE)[1,1]+1,1],"NA")
 
   meta_serial <-       meta2[nrow(meta2),1]
   meta_start_time <-   meta3[nrow(meta3),1]
@@ -80,36 +87,77 @@ actigraph_metadata <- function(file_location) {
 ## Function
 # Input: ActiGraph File
 # Output: ActiGraph Raw DataFrame
-actigraph_raw <- function(file_location) {
-  raw <- read.csv(file_location, skip=10, header = F)
-  metadata <- actigraph_metadata(file_location)
-
-  start <- paste(metadata$meta_start_date," ",metadata$meta_start_time, sep="")
-  format <- data.frame(strsplit(metadata$meta_format,"/"), stringsAsFactors = FALSE)
-  for(i in 1:nrow(format)){
-    if(tolower(format[i,1]) == "m" || tolower(format[i,1]) == "mm"){
-      format[i,1] <- "m"
-    } else if(tolower(format[i,1]) == "d" || tolower(format[i,1]) == "dd"){
-      format[i,1] <- "d"
-    } else if(tolower(format[i,1]) == "yy" || tolower(format[i,1]) == "yyyy" || tolower(format[i,1]) == "y"){
-      format[i,1] <- "Y"
+actigraph_raw <- function(file_location, dataTable = FALSE, metaData = TRUE) {
+  if(dataTable){
+    if(metaData){
+      raw <- read.csv(file_location, skip=10, header = T)
+      raw$Date <- NULL
+      raw$Time <- NULL
+      raw$Vector.Magnitude <- NULL
+      raw$VectorMagnitude <- NULL
+    } else {
+      read_raw <- read.csv(file_location, header = T)
+      raw <- data.frame("Activity" = read_raw$Activity)
     }
+  } else {
+    raw <- read.csv(file_location, skip=10, header = F)
+  }
+  if(metaData){
+    metadata <- actigraph_metadata(file_location)
+
+    start <- paste(metadata$meta_start_date," ",metadata$meta_start_time, sep="")
+    format <- data.frame(strsplit(metadata$meta_format,"/"), stringsAsFactors = FALSE)
+    if(format == "NA"){
+      format <- data.frame(c("m","d","Y"),stringsAsFactors =  FALSE)
+    }
+    for(i in 1:nrow(format)){
+      if(tolower(format[i,1]) == "m" || tolower(format[i,1]) == "mm"){
+        format[i,1] <- "m"
+      } else if(tolower(format[i,1]) == "d" || tolower(format[i,1]) == "dd"){
+        format[i,1] <- "d"
+      } else if(tolower(format[i,1]) == "yy" || tolower(format[i,1]) == "yyyy" || tolower(format[i,1]) == "y"){
+        format[i,1] <- "Y"
+      }
+    }
+  } else {
+    format <- data.frame(c("m","d","Y"),stringsAsFactors =  FALSE)
   }
 
   raw$fulltime <- NA
-  raw$fulltime[1] <- as.POSIXct(start,format=paste("%",format[1,1],"/%",format[2,1],"/%",format[3,1]," %H:%M:%S", sep=""))
+  if(metaData){
+    if(dataTable){
+      dtStart <- paste(read.csv(file_location, skip=10, nrows = 1, header = T)$Date,read.csv(file_location, skip=10, nrows = 1, header = T)$Time)
+      raw$fulltime[1] <- as.POSIXct(dtStart,format=paste("%",format[1,1],"/%",format[2,1],"/%",format[3,1]," %H:%M:%S", sep=""), tz = Sys.timezone())
+    } else {
+      raw$fulltime[1] <- as.POSIXct(start,format=paste("%",format[1,1],"/%",format[2,1],"/%",format[3,1]," %H:%M:%S", sep=""), tz = Sys.timezone())
+    }
+  } else {
+    start <- paste(read.csv(file_location, nrows = 1, header = T)$Date,read.csv(file_location, nrows = 1, header = T)$Time)
+    raw$fulltime[1] <- as.POSIXct(start,format=paste("%",format[1,1],"/%",format[2,1],"/%",format[3,1]," %H:%M:%S", sep=""), tz = Sys.timezone())
+  }
 
-  epoch <- data.frame(strsplit(metadata$meta_epoch,":"), stringsAsFactors = FALSE)
-  epoch_hour <- as.integer(epoch[1,1])
-  epoch_minute <- as.integer(epoch[2,1])
-  epoch_second <- as.integer(epoch[3,1])
+  if(metaData){
+    epoch <- data.frame(strsplit(metadata$meta_epoch,":"), stringsAsFactors = FALSE)
+    epoch_hour <- as.integer(epoch[1,1])
+    epoch_minute <- as.integer(epoch[2,1])
+    epoch_second <- as.integer(epoch[3,1])
 
-  epoch <- (epoch_hour*60*60)+(epoch_minute*60)+epoch_second
+    epoch <- (epoch_hour*60*60)+(epoch_minute*60)+epoch_second
+  } else {
+    dtNext <- paste(read.csv(file_location, nrows = 2, header = T)$Date[2],read.csv(file_location, nrows = 2, header = T)$Time[2])
+    raw$fulltime[2] <- as.POSIXct(dtNext,format=paste("%",format[1,1],"/%",format[2,1],"/%",format[3,1]," %H:%M:%S", sep=""), tz = Sys.timezone())
+    epoch <- raw$fulltime[2]-raw$fulltime[1]
+  }
 
   start_time <- as.POSIXct(start,format=paste("%",format[1,1],"/%",format[2,1],"/%",format[3,1]," %H:%M:%S", sep=""))
   raw$fulltime <- sapply(1:nrow(raw), function(x) start_time+epoch*(x-1))
 
-  mode <- as.integer(metadata$meta_mode)+1
+  if(metaData){
+    mode <- as.integer(metadata$meta_mode)+1
+  }
+  else {
+    mode <- 1
+  }
   rows <- switch(mode,
                  c("Activity"),
                  c("Activity", "Steps"),
@@ -189,16 +237,22 @@ actigraph_raw <- function(file_location) {
   return(raw)
 }
 
-acc_nonwear <- function(file_location, nhanes = TRUE){
-  acc_metadata <- actigraph_metadata(file_location)
-  acc_raw <- actigraph_raw(file_location)
+acc_nonwear <- function(file_location, nhanes = TRUE, dataTable = FALSE, metaData = TRUE){
+  if(metaData){
+    acc_metadata <- actigraph_metadata(file_location)
+  }
+  acc_raw <- actigraph_raw(file_location, dataTable, metaData)
 
+  if(metaData){
   epoch <- data.frame(strsplit(acc_metadata$meta_epoch,":"), stringsAsFactors = FALSE)
   epoch_hour <- as.integer(epoch[1,1])
   epoch_minute <- as.integer(epoch[2,1])
   epoch_second <- as.integer(epoch[3,1])
 
   epoch <- (epoch_hour*60*60)+(epoch_minute*60)+epoch_second
+  } else {
+    epoch <- acc_raw$fulltime[2]-acc_raw$fulltime[1]
+  }
 
   if(epoch == 30){
     nhanes_break <- 50
@@ -229,7 +283,8 @@ acc_nonwear <- function(file_location, nhanes = TRUE){
                                                     "non_wear_new_break","non_wear_length_new",
                                                     "non_wear_bout"))]
   acc_proc$wear <- as.integer(!acc_proc$nonwear)
-  acc_proc$fulldate <- as.Date(as.POSIXct(acc_proc$fulltime, origin = "1970-01-01"), origin = "1970-01-01")
+
+  acc_proc$fulldate <- as.Date(as.character(as.POSIXct(acc_proc$fulltime, origin = "1970-01-01", tz = Sys.timezone())))
   valid_days <- data.frame(ddply(acc_proc,~fulldate,summarise,time=sum(wear)))
   if(epoch == 30){
     valid_days$valid_day <- as.integer(valid_days$time > 1200)
@@ -249,12 +304,12 @@ acc_nonwear <- function(file_location, nhanes = TRUE){
 ## Function
 # Input: Folder of accelerometer files, age data file (ID and age only), NHANES yes/no
 
-acc_ageadjusted <- function(folder_location, age_data_file, nhanes_nonwear = TRUE){
+acc_ageadjusted <- function(folder_location, age_data_file, nhanes_nonwear = TRUE, id_length = 7, dataTable = FALSE, metaData = TRUE){
   cores=detectCores()
   if(cores[1]>2){
     cl <- makeCluster(cores[1]-1)
   } else {
-    cores <- 1
+    cores <- 2
     cl <- makeCluster(1)
   }
   registerDoParallel(cl)
@@ -268,7 +323,7 @@ acc_ageadjusted <- function(folder_location, age_data_file, nhanes_nonwear = TRU
 
   acc_full <- foreach(i=1:length(file_ids), .combine=rbind,.packages=c("plyr","progress","ActiPro")) %dopar% {
     acc_hold <- NULL
-    acc_hold <- acc_nonwear(file_locations[i], nhanes = nhanes_nonwear)
+    acc_hold <- acc_nonwear(file_locations[i], nhanes = nhanes_nonwear, dataTable, metaData)
     for(var in acc_vars){
       if(is.na(match(var,colnames(acc_hold)))){
         acc_hold[,var] <- NA_integer_
@@ -278,14 +333,18 @@ acc_ageadjusted <- function(folder_location, age_data_file, nhanes_nonwear = TRU
     acc_progress$tick()
     acc_hold
   }
-  acc_full$id <- vapply(strsplit(acc_full$file_id, "_", fixed = TRUE), "[", 1, FUN.VALUE=character(1))
+  acc_full$id <- tolower(substr(acc_full$file_id,1,id_length))
 
-  age_data <- read.csv(age_data_file, stringsAsFactors = FALSE)
+  age_data <- read.csv(age_data_file, stringsAsFactors = FALSE, colClasses=c(rep("character",2)))
   colnames(age_data) <- c("id","age")
+  age_data$age <- as.integer(age_data$age)
+  age_data$id <- tolower(age_data$id)
+  age_data$age[age_data$age > 17] <- 18 #Currently handles all adults as equals
 
-  age <- c(6,7,8,9,10,11,12,13,14,15,16,17)
-  div_mod <- c(1400, 1515,1638,1770,1910,2059,2220,2393,2580,2781,3000,3239) # 2020
-  div_vig <- c(3758,3947,4147,4360,4588,4832,5094,5375,5679,6007,6363,6751) #5999
+
+  age <- c(6,7,8,9,10,11,12,13,14,15,16,17,18)
+  div_mod <- c(1400, 1515,1638,1770,1910,2059,2220,2393,2580,2781,3000,3239,2020)
+  div_vig <- c(3758,3947,4147,4360,4588,4832,5094,5375,5679,6007,6363,6751,5999)
   age_acc <- data.frame(age,div_mod,div_vig)
 
   age_merge <- join(age_data,age_acc, by="age", type = "inner")
@@ -307,12 +366,61 @@ acc_ageadjusted <- function(folder_location, age_data_file, nhanes_nonwear = TRU
   acc_full_age <- join(acc_full,age_merge, by="id", type = "inner")
   acc_full_age$divider <- ifelse(acc_full_age$epoch==30,2,1)
 
-  acc_full_age$sed <- ifelse(acc_full_age$Activity < (100/acc_full_age$divider),1,0)
-  acc_full_age$vig <- ifelse(acc_full_age$Activity > (acc_full_age$div_vig/acc_full_age$divider),1,0)
-  acc_full_age$mod <- ifelse(acc_full_age$vig != 1 &&
-                               acc_full_age$Activity > (acc_full_age$div_mod/acc_full_age$divider),1,0)
-  acc_full_age$light <- ifelse(acc_full_age$sed != 1 && acc_full_age$mod != 1 && acc_full_age$vig != 1,1,0)
+  acc_full_age$sed <- as.integer(acc_full_age$wear == 1 & acc_full_age$Activity < (100/acc_full_age$divider))
+    #ifelse(acc_full_age$wear == 1 && acc_full_age$Activity < (100/acc_full_age$divider),1,0)
+  acc_full_age$vig <- as.integer(acc_full_age$Activity > (acc_full_age$div_vig/acc_full_age$divider))
+    #ifelse(acc_full_age$Activity > (acc_full_age$div_vig/acc_full_age$divider),1,0)
+  acc_full_age$mod <- as.integer(acc_full_age$vig != 1 & acc_full_age$Activity > (acc_full_age$div_mod/acc_full_age$divider))
+    #ifelse(acc_full_age$vig != 1,
+     #                          ifelse(acc_full_age$Activity > (acc_full_age$div_mod/acc_full_age$divider),1,0),0)
+  acc_full_age$light <- as.integer(acc_full_age$wear == 1 & acc_full_age$sed != 1 & acc_full_age$mod != 1 & acc_full_age$vig != 1)
+    #ifelse(acc_full_age$sed != 1,
+     #                          ifelse(acc_full_age$mod != 1,
+      #                                ifelse(acc_full_age$vig != 1,1,0),0),0)
+
+  acc_full_age$string_time <- as.character(as.POSIXct(acc_full_age$fulltime, origin = "1970-01-01", tz = Sys.timezone()))
 
   stopCluster(cl)
   return(acc_full_age)
+}
+
+mvpa_bouts <- function(acc_ageadjusted, min_break, act_break, bout_length) {
+  cores=detectCores()
+  if(cores[1]>2){
+    cl <- makeCluster(cores[1]-1)
+  } else {
+    cores <- 2
+    cl <- makeCluster(1)
+  }
+  registerDoParallel(cl)
+
+  mvpa_acc <- acc_ageadjusted[,c("mod","vig","id","fulltime","fulldate","epoch")]
+  mvpa_acc$mvpa <- as.integer(mvpa_acc$mod == 1 | mvpa_acc$vig == 1)
+  mvpa_acc$mod <- NULL
+  mvpa_acc$vig <- NULL
+  mvpa_acc$mvpa_break <- as.integer(!mvpa_acc$mvpa)
+
+  mvpa_ids <- unique(mvpa_acc$id)
+
+  mvpa_progress <- progress_bar$new(format = "Processing [:bar] :percent eta: :eta elapsed time :elapsed"
+                                   , total = length(mvpa_ids)/(cores-1), clear = FALSE, width = 60)
+
+  mvpa_proc  <- foreach(i=1:length(mvpa_ids), .combine=rbind,.packages=c("plyr","progress","ActiPro")) %dopar% {
+    mvpa_hold <- subset(mvpa_acc,mvpa_acc$id == mvpa_ids[i])
+    epoch <- mvpa_hold$epoch[1]
+
+    mvpa_hold$mvpa_length <- bout_sequence(mvpa_hold$mvpa,mvpa_hold$mvpa_break, epoch)
+    mvpa_hold$mvpa_new <- sapply(1:nrow(mvpa_hold), function(x) ifelse((mvpa_hold$mvpa_length[x] <= min_break
+                                                                        && mvpa_hold$mvpa[x] == 0
+                                                                        && mvpa_hold$Activity[x] < act_break),1
+                                                                       ,mvpa_hold$mvpa[x]))
+
+    mvpa_hold$mvpa_new_break <- as.integer(!mvpa_hold$mvpa_new)
+    mvpa_hold$mvpa_length_new <- bout_sequence(mvpa_hold$mvpa_new,mvpa_hold$mvpa_new_break, epoch)
+    mvpa_hold$mvpa_bout <- as.integer(mvpa_hold$mvpa_length_new > bout_length & mvpa_hold$mvpa_new == 1)
+    mvpa_progress$tick()
+    mvpa_hold
+  }
+  stopCluster(cl)
+  return(mvpa_proc$mvpa_bout)
 }
