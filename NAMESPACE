@@ -1,1 +1,2 @@
+import(plyr, progress, parallel, foreach, doParallel, iterators, data.table)
 exportPattern("^[[:alpha:]]+")
