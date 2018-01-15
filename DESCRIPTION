@@ -10,3 +10,4 @@ License: GNU AGPLv3
 Encoding: UTF-8
 LazyData: true
 Imports: plyr, progress, parallel, foreach, doParallel, iterators, data.table
+RoxygenNote: 6.0.1

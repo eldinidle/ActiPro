@@ -1,10 +1,10 @@
-require("plyr")
-require("progress")
-require("parallel")
-require("foreach")
-require("doParallel")
-require("iterators")
-require("data.table")
+#' @import plyr
+#' @import data.table
+#' @import progress
+#' @import parallel
+#' @import foreach
+#' @import doParallel
+#' @import iterators
 
 actigraph_mode_columns <- function(mode_integer) {
   mode_switch <- switch(mode_integer,
@@ -83,9 +83,6 @@ actigraph_mode_columns <- function(mode_integer) {
   return(mode_switch)
 }
 
-## Function
-# Input: Acc Stream Vector, Break Acc Stream Vector, Epoch Length
-# Output: Bout Sequence Vector
 bout_sequence <- function(acc_stream, break_stream, epoch){ #, min_bout_length
   acc_raw <- data.table("acc_stream" = as.integer(acc_stream), "break_stream" = as.integer(break_stream))
   epoch <- as.integer(epoch)
@@ -311,7 +308,7 @@ acc_nonwear <- function(file_location, nhanes = TRUE, dataTable = FALSE, metaDat
 }
 
 
-
+#' @export
 acc_ageadjusted <- function(folder_location, age_data_file, nhanes_nonwear = TRUE, id_length = 7, dataTable = FALSE, metaData = TRUE){
   cores=detectCores()
   if(cores[1]>2){
@@ -375,7 +372,7 @@ acc_ageadjusted <- function(folder_location, age_data_file, nhanes_nonwear = TRU
   return(acc_full_age)
 }
 
-
+#' @export
 mvpa_bouts <- function(acc_ageadjusted, min_break, act_break, bout_length) {
   cores=detectCores()
   if(cores[1]>2){
