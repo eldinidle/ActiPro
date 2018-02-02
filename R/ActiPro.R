@@ -230,7 +230,7 @@ actigraph_raw <- function(file_location, dataTable = FALSE, metaData = TRUE) {
     epoch <- raw$fulltime[2]-raw$fulltime[1]
   }
 
-  start_time <- as.POSIXct(start,format=paste("%",format[1,1],"/%",format[2,1],"/%",format[3,1]," %H:%M:%S", sep=""))
+  start_time <- as.POSIXct(start,format=paste("%",format[1,1],"/%",format[2,1],"/%",format[3,1]," %H:%M:%S", sep=""), tz = Sys.timezone())
   raw[, fulltime := start_time+epoch*(.I-1)]
 
   if(metaData){
@@ -307,7 +307,20 @@ acc_nonwear <- function(file_location, nhanes = TRUE, dataTable = FALSE, metaDat
   return(acc)
 }
 
-
+#' Produce an activity dataset from raw data
+#'
+#' @param folder_location location of \strong(.csv) files
+#' @param age_data_file two column \strong(.csv) file containing \strong(id) and \strong(age)
+#' @param nhanes_nonwear = TRUE, use NHANES non-wear thresholds
+#' @param id_length = 7, length of \strong(id) variable in \strong(age_data_file)
+#' @param dataTable = FALSE, datatable format, post-processed with ActiLife
+#' @param metaData = TRUE, presence of metadata in headers of \strong(.csv) file
+#'
+#' @return A data.table containing a variety of activity fields and wear time
+#'
+#' @examples
+#' acc <- acc_ageadjusted(folder_location, age_data_file, TRUE, 7, FALSE, TRUE)
+#'
 #' @export
 acc_ageadjusted <- function(folder_location, age_data_file, nhanes_nonwear = TRUE, id_length = 7, dataTable = FALSE, metaData = TRUE){
   cores=detectCores()
@@ -372,6 +385,18 @@ acc_ageadjusted <- function(folder_location, age_data_file, nhanes_nonwear = TRU
   return(acc_full_age)
 }
 
+#' Generates vector of continuous MVPA bouts
+#'
+#' @param acc_ageadjusted An ActiPro data.table derived from Actigraph Actilife data
+#' @param min_break Length of time for a grace period during a bout, probably 0
+#' @param act_break Grace period bout restriction, upper level
+#' @param bout_length Minimum bout length, in seconds
+#'
+#' @return A vector that fits in the \code{acc_ageadjusted} data.table
+#'
+#' @examples
+#' acc_ageadjusted[, mvpa_bout := function(acc_ageadjusted, 0, 0, 600)
+#'
 #' @export
 mvpa_bouts <- function(acc_ageadjusted, min_break, act_break, bout_length) {
   cores=detectCores()
@@ -415,3 +440,144 @@ mvpa_bouts <- function(acc_ageadjusted, min_break, act_break, bout_length) {
   stopCluster(cl)
   return(mvpa_proc[, mvpa_bout])
 }
+
+#' Returns a datatable to merge accelerometer data back into EMA data
+#'
+#' @param ema_file A csv file with three columns, id, fulltime, and index
+#' @param activity_data An \code{acc_ageadjusted} data.table
+#' @param time_stubs Time windows to use
+#' @param activity_types Types of activity from \code{acc_ageadjusted} data.table
+#'
+#' @return A data.table with windows appended to ema_stubs file
+#'
+#' @examples
+#' ema_acc_table <- ema_acc[ema_stubs, activity_data]
+#'
+#' @export
+ema_acc <- function(ema_file, activity_data,
+                    time_stubs = c("15","30","60","120"),
+                    activity_types = c("VALID","NONVALID","MOD","VIG","SED","LIGHT","MVPA","MVPA_BOUT","ACTIVITY")){
+  cores=detectCores()
+  if(cores[1]>2){
+    cl <- makeCluster(cores[1]-1)
+  } else {
+    cores <- 2
+    cl <- makeCluster(1)
+  }
+  registerDoParallel(cl)
+  ema_stubs <- fread(ema_file, colClasses = c("character","character","integer"),
+                     col.names = c("ID","FULLTIME","ACC_STABLE_STUB"))
+  ema_stubs[, ID := tolower(ID)]
+  ema_stubs[, time := as.POSIXct(FULLTIME,format="%Y-%m-%d %H:%M:%S",origin="1970-01-01", tz = Sys.timezone())]
+
+  keycols <- c("ID","time")
+  setorderv(ema_stubs,keycols)
+  setkeyv(ema_stubs,keycols)
+
+  keycols <- c("id","fulltime")
+  setorderv(activity_data,keycols)
+  setkeyv(activity_data,keycols)
+
+  ema_stubs2 <- ema_stubs
+  ema_stubs2[, es_date := as.IDate(FULLTIME, format="%Y-%m-%d %H:%M:%S")]
+  ema_stubs2[, es_time := as.ITime(FULLTIME, format="%Y-%m-%d %H:%M:%S")]
+  keycols <- c("ID","es_date","es_time")
+  setorderv(ema_stubs2,keycols)
+  setkeyv(ema_stubs2,keycols)
+
+  activity_data2 <- activity_data
+  activity_data2[, ad_date := as.IDate(string_time, format="%Y-%m-%d %H:%M:%S")]
+  activity_data2[, ad_time := as.ITime(string_time, format="%Y-%m-%d %H:%M:%S")]
+  keycols <- c("id","ad_date","ad_time")
+  setorderv(activity_data2,keycols)
+  setkeyv(activity_data2,keycols)
+
+
+  type_var <- function(type_switch){
+    return(switch(type_switch,
+                     VALID = "wear",
+                     NONVALID = "nonwear",
+                     MOD = "mod",
+                     VIG = "vig",
+                     SED = "sed",
+                     LIGHT = "light",
+                     MET = "met",
+                     MVPA = "mvpa",
+                     MVPA_BOUT = "mvpa_bout",
+                     ACTIVITY = "Activity"))
+  }
+
+  ema_progress <- progress_bar$new(format = "Processing [:bar] :percent eta: :eta elapsed time :elapsed"
+                                   , total = (length(activity_types)*length(time_stubs)*3), clear = FALSE, width = 60)
+
+  for (ts in time_stubs) {
+    for (type in activity_types){
+      print(ts)
+      print(type)
+      print("BEFORE")
+      before <- paste(type,"_",ts,"_BEFORE", sep="")
+      acc_vector <- foreach(i=1:ema_stubs[,.N], .combine=rbind,.packages=c("data.table")) %dopar% {
+        hold <- activity_data2[.(ema_stubs2[i,ID],ema_stubs2[i,es_date])]
+        setkey(hold,ad_time)
+        hold[between(ad_time,
+          ema_stubs2[i,es_time]-(60L*as.integer(ts)),
+          ema_stubs2[i,es_time]+1L, incbounds = FALSE),
+          sum(eval(parse(text = type_var(type))), na.rm = TRUE)/mean(divider,na.rm = TRUE)]
+        #hold[ad_time > ema_stubs2[i,es_time]-(60L*as.integer(ts)) &
+         #   ad_time <= ema_stubs2[i,es_time],
+          #   sum(eval(parse(text = type_var(type))))/mean(divider)]
+        }
+      ema_stubs[, eval(before) := acc_vector]
+      ema_progress$tick()
+    }
+  }
+
+    for (ts in time_stubs) {
+      for (type in activity_types){
+        print(ts)
+        print(type)
+        print("AFTER")
+        after <- paste(type,"_",ts,"_AFTER", sep="")
+        acc_vector <- foreach(i=1:ema_stubs[,.N], .combine=rbind,.packages=c("data.table")) %dopar% {
+          hold <- activity_data2[.(ema_stubs2[i,ID],ema_stubs2[i,es_date])]
+          setkey(hold,ad_time)
+          hold[between(ad_time,
+                       ema_stubs2[i,es_time]-1,
+                       ema_stubs2[i,es_time]+(60L*as.integer(ts)), incbounds = FALSE),
+               sum(eval(parse(text = type_var(type))), na.rm = TRUE)/mean(divider,na.rm = TRUE)]
+          #hold[ad_time > ema_stubs2[i,es_time]-(60L*as.integer(ts)) &
+          #   ad_time <= ema_stubs2[i,es_time],
+          #   sum(eval(parse(text = type_var(type))))/mean(divider)]
+        }
+        ema_stubs[, eval(after) := acc_vector]
+        ema_progress$tick()
+      }
+    }
+
+      for (ts in time_stubs) {
+        for (type in activity_types){
+          print(ts)
+          print(type)
+          print("WINDOW")
+          window <- paste(type,"_",as.character(as.integer(ts)*2),"_WINDOW", sep="")
+          acc_vector <- foreach(i=1:ema_stubs[,.N], .combine=rbind,.packages=c("data.table")) %dopar% {
+            hold <- activity_data2[.(ema_stubs2[i,ID],ema_stubs2[i,es_date])]
+            setkey(hold,ad_time)
+            hold[between(ad_time,
+                         ema_stubs2[i,es_time]-(60L*as.integer(ts)),
+                         ema_stubs2[i,es_time]+(60L*as.integer(ts)), incbounds = FALSE),
+                 sum(eval(parse(text = type_var(type))), na.rm = TRUE)/mean(divider,na.rm = TRUE)]
+            #hold[ad_time > ema_stubs2[i,es_time]-(60L*as.integer(ts)) &
+            #   ad_time <= ema_stubs2[i,es_time],
+            #   sum(eval(parse(text = type_var(type))))/mean(divider)]
+          }
+          ema_stubs[, eval(window) := acc_vector]
+          ema_progress$tick()
+        }
+      }
+
+  stopCluster(cl)
+
+  return(ema_stubs)
+}
+
