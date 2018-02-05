@@ -2,6 +2,7 @@
 
 export(acc_ageadjusted)
 export(ema_acc)
+export(ema_acc_fast)
 export(mvpa_bouts)
 import(data.table)
 import(doParallel)

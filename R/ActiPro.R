@@ -581,3 +581,136 @@ ema_acc <- function(ema_file, activity_data,
   return(ema_stubs)
 }
 
+#' Returns a datatable to merge accelerometer data back into EMA data
+#'
+#' @param ema_file A csv file with three columns, id, fulltime, and index
+#' @param activity_data An \code{acc_ageadjusted} data.table
+#' @param time_stubs Time windows to use
+#' @param activity_types Types of activity from \code{acc_ageadjusted} data.table
+#'
+#' @return A data.table with windows appended to ema_stubs file
+#'
+#' @examples
+#' ema_acc_table <- ema_acc[ema_stubs, activity_data]
+#'
+#' @export
+ema_acc_fast <- function(ema_file, activity_data,
+                    time_stubs = c("15","30","60","120"),
+                    activity_types = c("VALID","NONVALID","MOD","VIG","SED","LIGHT","MVPA","MVPA_BOUT","ACTIVITY")){
+  ema_stubs <- fread(ema_file, colClasses = c("character","character","integer"),
+                     col.names = c("ID","FULLTIME","ACC_STABLE_STUB"))
+  ema_stubs[, ID := tolower(ID)]
+  ema_stubs[, time := as.POSIXct(FULLTIME,format="%Y-%m-%d %H:%M:%S",origin="1970-01-01", tz = Sys.timezone())]
+
+  keycols <- c("ID","time")
+  setorderv(ema_stubs,keycols)
+  setkeyv(ema_stubs,keycols)
+
+  keycols <- c("id","fulltime")
+  setorderv(activity_data,keycols)
+  setkeyv(activity_data,keycols)
+
+  ema_stubs2 <- ema_stubs
+  ema_stubs2[, es_date := as.IDate(FULLTIME, format="%Y-%m-%d %H:%M:%S")]
+  ema_stubs2[, es_time := as.ITime(FULLTIME, format="%Y-%m-%d %H:%M:%S")]
+  keycols <- c("ID","es_date","es_time")
+  setorderv(ema_stubs2,keycols)
+  setkeyv(ema_stubs2,keycols)
+
+  activity_data2 <- activity_data
+  activity_data2[, ad_date := as.IDate(string_time, format="%Y-%m-%d %H:%M:%S")]
+  activity_data2[, ad_time := as.ITime(string_time, format="%Y-%m-%d %H:%M:%S")]
+  keycols <- c("id","ad_date","ad_time")
+  setorderv(activity_data2,keycols)
+  setkeyv(activity_data2,keycols)
+
+
+  type_var <- function(type_switch){
+    return(switch(type_switch,
+                  VALID = "wear",
+                  NONVALID = "nonwear",
+                  MOD = "mod",
+                  VIG = "vig",
+                  SED = "sed",
+                  LIGHT = "light",
+                  MET = "met",
+                  MVPA = "mvpa",
+                  MVPA_BOUT = "mvpa_bout",
+                  ACTIVITY = "Activity"))
+  }
+
+  ema_progress <- progress_bar$new(format = "Processing [:bar] :percent eta: :eta elapsed time :elapsed"
+                                   , total = (length(activity_types)*length(time_stubs)*3), clear = FALSE, width = 60)
+
+  for (ts in time_stubs) {
+    ema_stubs2[, expand_times := (as.integer(ts)*2L)]
+    ema_stubs2[, low_time := as.POSIXct(round(time - as.integer(ts)*60L,"min"))]
+    ema_stubs2[, high_time := as.POSIXct(round(time,"min"))]
+    expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]][,
+                                                         fulltime := seq(low_time , high_time, by = '30 sec'),
+                                                         by = .(low_time, high_time)][]
+    expand[, id := ID]
+    for (type in activity_types){
+      print(ts)
+      print(type)
+      print("BEFORE")
+      before <- paste(type,"_",ts,"_BEFORE", sep="")
+      act_var <- paste("i.",type_var(type),sep="")
+      expand[activity_data2, on = c('id','fulltime'), return_var := as.integer(get(act_var))]
+      expand[activity_data2, on = c('id','fulltime'), divide_var := as.integer(i.divider)]
+      return <- expand[, .(add_var = as.integer(sum(return_var/divide_var))), by=.(ID, ACC_STABLE_STUB)]
+      #setnames(return,"add_var",eval(before))
+      ema_stubs[return, on = c('ACC_STABLE_STUB'), eval(before) := i.add_var]
+      ema_progress$tick()
+    }
+  }
+
+  for (ts in time_stubs) {
+    ema_stubs2[, expand_times := (as.integer(ts)*2L)]
+    ema_stubs2[, low_time := as.POSIXct(round(time,"min"))]
+    ema_stubs2[, high_time := as.POSIXct(round(time + as.integer(ts)*60L,"min"))]
+    expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]][,
+                                                         fulltime := seq(low_time , high_time, by = '30 sec'),
+                                                         by = .(low_time, high_time)][]
+    expand[, id := ID]
+    for (type in activity_types){
+      print(ts)
+      print(type)
+      print("AFTER")
+      before <- paste(type,"_",ts,"_AFTER", sep="")
+      act_var <- paste("i.",type_var(type),sep="")
+      expand[activity_data2, on = c('id','fulltime'), return_var := as.integer(get(act_var))]
+      expand[activity_data2, on = c('id','fulltime'), divide_var := as.integer(i.divider)]
+      return <- expand[, .(add_var = as.integer(sum(return_var/divide_var))), by=.(ID, ACC_STABLE_STUB)]
+      #setnames(return,"add_var",eval(before))
+      ema_stubs[return, on = c('ACC_STABLE_STUB'), eval(before) := i.add_var]
+      ema_progress$tick()
+    }
+  }
+
+  for (ts in time_stubs) {
+    ema_stubs2[, expand_times := (as.integer(ts)*4L)]
+    ema_stubs2[, low_time := as.POSIXct(round(time - as.integer(ts)*60L,"min"))]
+    ema_stubs2[, high_time := as.POSIXct(round(time + as.integer(ts)*60L,"min"))]
+    expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]][,
+                                                         fulltime := seq(low_time , high_time, by = '30 sec'),
+                                                         by = .(low_time, high_time)][]
+    expand[, id := ID]
+    for (type in activity_types){
+      print(ts)
+      print(type)
+      print("WINDOW")
+      before <- paste(type,"_",ts,"_WINDOW", sep="")
+      act_var <- paste("i.",type_var(type),sep="")
+      expand[activity_data2, on = c('id','fulltime'), return_var := as.integer(get(act_var))]
+      expand[activity_data2, on = c('id','fulltime'), divide_var := as.integer(i.divider)]
+      return <- expand[, .(add_var = as.integer(sum(return_var/divide_var))), by=.(ID, ACC_STABLE_STUB)]
+      #setnames(return,"add_var",eval(before))
+      ema_stubs[return, on = c('ACC_STABLE_STUB'), eval(before) := i.add_var]
+      ema_progress$tick()
+    }
+  }
+
+  return(ema_stubs)
+}
+
