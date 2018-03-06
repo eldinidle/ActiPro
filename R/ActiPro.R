@@ -6,6 +6,7 @@
 #' @import doParallel
 #' @import iterators
 
+# JZ Commit
 #    ActiPro, an R package to process data from ActiGraph output
 #    Copyright (C) 2018 Eldin Dzubur, PhD
 #
