@@ -6,6 +6,7 @@
 #' @import doParallel
 #' @import iterators
 
+# JZ Commit
 #    ActiPro, an R package to process data from ActiGraph output
 #    Copyright (C) 2018 Eldin Dzubur, PhD
 #
@@ -23,6 +24,7 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+#below code is just telling R to label the columns based on what mode the accelerometer data is in.
 actigraph_mode_columns <- function(mode_integer) {
   mode_switch <- switch(mode_integer,
                  c("Activity"),
