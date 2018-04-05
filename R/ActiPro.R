@@ -5,6 +5,25 @@
 #' @import foreach
 #' @import doParallel
 #' @import iterators
+#' @import RSQLite
+#' @import DBI
+
+
+sedentary_features <- function(acc_ageadjusted) {
+
+}
+
+ancillary_features <- function(acc_ageadjusted) {
+
+}
+
+light_features <- function(acc_ageadjusted) {
+
+}
+
+active_features <- function(acc_ageadjusted) {
+
+}
 
 actigraph_mode_columns <- function(mode_integer) {
   mode_switch <- switch(mode_integer,
@@ -245,6 +264,60 @@ actigraph_raw <- function(file_location, dataTable = FALSE, metaData = TRUE) {
   return(raw)
 }
 
+acc_nonwear_agd <- function(file_location, nhanes = TRUE){
+  agd <- dbConnect(SQLite(), file_location)
+  acc_raw <- as.data.table(dbReadTable(agd,"data"))
+  settings <- as.data.table(dbReadTable(agd,"settings"))
+  acc_raw$fulltime <- as.POSIXct(acc_raw$dataTimestamp/(10000000),origin = "0001-01-01 00:00:00")
+  acc_raw[,1:=NULL]
+  mode_integer <- as.integer(settings[settingName == "modenumber", settingValue])
+  rows <- actigraph_mode_columns(mode_integer+1)
+  setnames(acc_raw,c(rows,"fulltime"))
+  epoch <- as.integer(settings[settingName == "epochlength", settingValue])
+
+  if(epoch == 30){
+    nhanes_break <- 50
+  } else if(epoch == 60){
+    nhanes_break <- 100
+  } else {
+    print("Epoch not supported")
+    stop()
+  }
+
+  if(!nhanes) {
+    nhanes_break <- 0
+  }
+
+  acc_raw[, non_wear := as.integer(Activity == 0)]
+  acc_raw[, non_wear_break := as.integer(!non_wear)]
+  acc_raw[, non_wear_length := bout_sequence(acc_raw[,non_wear],acc_raw[,non_wear_break],epoch)]
+  acc_raw[, non_wear_new := ifelse((non_wear_length <= 120
+                                    & non_wear == 0
+                                    & Activity < nhanes_break),1
+                                   ,non_wear)]
+  acc_raw[, non_wear_new_break := as.integer(!non_wear_new)]
+  acc_raw[, non_wear_length_new := bout_sequence(non_wear_new, non_wear_new_break, epoch)]
+  acc_raw[, non_wear_bout := as.integer(non_wear_length_new > 3600 & non_wear_new == 1)]
+  setnames(acc_raw,"non_wear_bout","nonwear")
+  acc_raw[ , c("non_wear","non_wear_break",
+               "non_wear_length", "non_wear_new",
+               "non_wear_new_break","non_wear_length_new") := NULL]
+  acc_raw[, wear := as.integer(!nonwear)]
+
+  acc_raw[, fulldate := as.Date(as.character(as.POSIXct(fulltime, origin = "1970-01-01", tz = Sys.timezone())))]
+  valid_days <- data.table(ddply(acc_raw,~fulldate,summarise,time=sum(wear)))
+  if(epoch == 30){
+    valid_days[, valid_day := as.integer(time > 1200)]
+  } else if(epoch == 60){
+    valid_days[, valid_day := as.integer(time > 600)]
+  }
+  valid_days[, valid_day_sum := sum(valid_day)]
+  setnames(valid_days,"time","valid_day_length")
+  acc <- merge(x = acc_raw, y= valid_days, by = "fulldate" , all.x = TRUE)
+  acc[,epoch := epoch]
+
+  return(acc)
+}
 
 acc_nonwear <- function(file_location, nhanes = TRUE, dataTable = FALSE, metaData = TRUE){
   if(metaData){
@@ -313,6 +386,7 @@ acc_nonwear <- function(file_location, nhanes = TRUE, dataTable = FALSE, metaDat
 #' @param age_data_file two column \strong(.csv) file containing \strong(id) and \strong(age)
 #' @param nhanes_nonwear = TRUE, use NHANES non-wear thresholds
 #' @param id_length = 7, length of \strong(id) variable in \strong(age_data_file)
+#' @param agdFile = FALSE, agd file, not csv, if TRUE, overrides \strong(dataTable) and \strong(metaData) settings
 #' @param dataTable = FALSE, datatable format, post-processed with ActiLife
 #' @param metaData = TRUE, presence of metadata in headers of \strong(.csv) file
 #'
@@ -322,7 +396,7 @@ acc_nonwear <- function(file_location, nhanes = TRUE, dataTable = FALSE, metaDat
 #' acc <- acc_ageadjusted(folder_location, age_data_file, TRUE, 7, FALSE, TRUE)
 #'
 #' @export
-acc_ageadjusted <- function(folder_location, age_data_file, nhanes_nonwear = TRUE, id_length = 7, dataTable = FALSE, metaData = TRUE){
+acc_ageadjusted <- function(folder_location, age_data_file, nhanes_nonwear = TRUE, id_length = 7, agdFile = FALSE, dataTable = FALSE, metaData = TRUE){
   cores=detectCores()
   if(cores[1]>2){
     cl <- makeCluster(cores[1]-1)
@@ -332,24 +406,47 @@ acc_ageadjusted <- function(folder_location, age_data_file, nhanes_nonwear = TRU
   }
   registerDoParallel(cl)
 
-  file_locations <- list.files(folder_location, full.names = TRUE, pattern = "\\.csv$")
-  file_ids <- list.files(folder_location, full.names = FALSE, pattern = "\\.csv$")
-  acc_vars<- c("Activity", "Axis 2","Axis 3", "Steps", "HR","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying")
+  if(!agdFile){
+    file_locations <- list.files(folder_location, full.names = TRUE, pattern = "\\.csv$")
+    file_ids <- list.files(folder_location, full.names = FALSE, pattern = "\\.csv$")
+    acc_vars<- c("Activity", "Axis 2","Axis 3", "Steps", "HR","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying")
 
-  acc_progress <- progress_bar$new(format = "Processing [:bar] :percent eta: :eta elapsed time :elapsed"
-                                   , total = length(file_ids)/(cores-1), clear = FALSE, width = 60)
+    acc_progress <- progress_bar$new(format = "Processing [:bar] :percent eta: :eta elapsed time :elapsed"
+                                     , total = length(file_ids)/(cores-1), clear = FALSE, width = 60)
 
-  acc_full <- foreach(i=1:length(file_ids), .combine=rbind,.packages=c("data.table","plyr","progress","ActiPro")) %dopar% {
-    acc_hold <- NULL
-    acc_hold <- acc_nonwear(file_locations[i], nhanes = nhanes_nonwear, dataTable, metaData)
-    for(var in acc_vars){
-      if(is.na(match(var,colnames(acc_hold)))){
-        acc_hold[,var] <- NA_integer_
+    acc_full <- foreach(i=1:length(file_ids), .combine=rbind,.packages=c("data.table","plyr","progress","ActiPro")) %dopar% {
+      acc_hold <- NULL
+      acc_hold <- acc_nonwear(file_locations[i], nhanes = nhanes_nonwear, dataTable, metaData)
+      for(var in acc_vars){
+        if(is.na(match(var,colnames(acc_hold)))){
+          acc_hold[,var] <- NA_integer_
+        }
       }
+      acc_hold$file_id <- file_ids[i]
+      acc_progress$tick()
+      acc_hold
     }
-    acc_hold$file_id <- file_ids[i]
-    acc_progress$tick()
-    acc_hold
+  }
+  if(agdFile){
+    file_locations <- list.files(folder_location, full.names = TRUE, pattern = "\\.agd$")
+    file_ids <- list.files(folder_location, full.names = FALSE, pattern = "\\.agd$")
+    acc_vars<- c("Activity", "Axis 2","Axis 3", "Steps", "HR","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying")
+
+    acc_progress <- progress_bar$new(format = "Processing [:bar] :percent eta: :eta elapsed time :elapsed"
+                                     , total = length(file_ids)/(cores-1), clear = FALSE, width = 60)
+
+    acc_full <- foreach(i=1:length(file_ids), .combine=rbind,.packages=c("data.table","plyr","progress","ActiPro","DBI","RSQLite")) %dopar% {
+      acc_hold <- NULL
+      acc_hold <- acc_nonwear_agd(file_locations[i], nhanes = nhanes_nonwear)
+      for(var in acc_vars){
+        if(is.na(match(var,colnames(acc_hold)))){
+          acc_hold[,var] <- NA_integer_
+        }
+      }
+      acc_hold$file_id <- file_ids[i]
+      acc_progress$tick()
+      acc_hold
+    }
   }
 
   acc_full[, id := tolower(substr(file_id,1,id_length))]
