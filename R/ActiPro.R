@@ -7,6 +7,7 @@
 #' @import iterators
 #' @import RSQLite
 #' @import DBI
+#' @import eeptools
 
 
 sedentary_features <- function(acc_ageadjusted) {
@@ -298,6 +299,8 @@ acc_nonwear_agd <- function(file_location, nhanes = TRUE){
     nhanes_break <- 50
   } else if(epoch == 60){
     nhanes_break <- 100
+  } else if(epoch == 10){
+    nhanes_break <- 100/6
   } else {
     print("Epoch not supported")
     stop()
@@ -329,6 +332,8 @@ acc_nonwear_agd <- function(file_location, nhanes = TRUE){
     valid_days[, valid_day := as.integer(time > 1200)]
   } else if(epoch == 60){
     valid_days[, valid_day := as.integer(time > 600)]
+  } else if(epoch == 10){
+    valid_days[, valid_day := as.integer(time > 200)]
   }
   valid_days[, valid_day_sum := sum(valid_day)]
   setnames(valid_days,"time","valid_day_length")
@@ -470,9 +475,20 @@ acc_ageadjusted <- function(folder_location, age_data_file, nhanes_nonwear = TRU
 
   acc_full[, id := tolower(substr(file_id,1,id_length))]
 
+
   age_data <- fread(age_data_file, stringsAsFactors = FALSE, colClasses=c(rep("character",2)))
-  colnames(age_data) <- c("id","age")
-  age_data[, age := as.integer(age)]
+  age_data_date <- nchar(age_data[1,2]) == 10
+  if(age_data_date){
+    colnames(age_data) <- c("id","dob")
+    temp_age <- acc_full[, .SD[1], id][,.(id,fulldate)]
+    age_data <- merge(x = temp_age, y = age_data, by = "id", all = FALSE)
+    age_data[, agedate := as.Date(as.character(as.POSIXct(dob, origin = "1970-01-01", tz = Sys.timezone())))]
+    age_data[, age := age_calc(agedate, enddate=fulldate,units = "years")]
+    age_data <- age_data[,.(id,age)]
+  } else {
+    colnames(age_data) <- c("id","age")
+    age_data[, age := as.integer(age)]
+  }
   age_data[, id := tolower(id)]
   age_data[age > 17 , age := 18L] # adult support override
 
@@ -488,7 +504,7 @@ acc_ageadjusted <- function(folder_location, age_data_file, nhanes_nonwear = TRU
 
   acc_full_age <- merge(x = acc_full, y= age_merge, by = "id" , all = FALSE)
 
-  acc_full_age[, divider := ifelse(epoch == 30, 2,1)]
+  acc_full_age[, divider := ifelse(epoch == 30, 2,ifelse(epoch == 10, 6,1))]
 
   acc_full_age[, sed := as.integer(wear == 1 & Activity < (100/divider))]
   acc_full_age[, vig := as.integer(Activity > (div_vig/divider))]
