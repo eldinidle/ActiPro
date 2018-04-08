@@ -8,28 +8,177 @@
 #' @import RSQLite
 #' @import DBI
 #' @import eeptools
+#' @import reldist
 
 
 sedentary_features <- function(acc_ageadjusted) {
+  # Standardizing to minute epochs for relevant variables (sed)
+  epoch_acc <- acc_ageadjusted[valid_day == 1,
+                               list(id,fulldate,sed,fulltime,wear,age,divider)]
+  epoch_acc[, hour := as.POSIXlt(fulltime)$hour]
+  epoch_acc[, minute := as.POSIXlt(fulltime)$min]
+  minute_acc <- epoch_acc[,
+                          list(min_sed =  sum(sed, na.rm = TRUE),
+                               min_wear = sum(wear, na.rm = TRUE),
+                               mean_age = mean(age, na.rm = TRUE),
+                               min_divider = mean(divider, na.rm = TRUE)),
+                          by = list(id,
+                                    fulldate,
+                                    hour,
+                                    minute)]
+  minute_acc[, min_wear := min_wear/min_divider]
+  minute_acc[, min_sed := min_sed/min_divider]
 
+
+  # Creating day level variables, including sed_total
+  day_acc <- minute_acc[, list(sed_total = sum(min_sed, na.rm = TRUE),
+                               day_wear = sum(min_wear, na.rm = TRUE)),
+                          by = list(id,fulldate)]
+
+  # Some variables may have meaningful non-missing values,
+  # so we create a distribution of all valid days to merge in
+  temp_days <- day_acc[,list(id,fulldate)]
+
+  # Output sed_total
+  sed_total <- day_acc[, list(id,fulldate,sed_total)]
+  sed_percent <- day_acc[, list(id, fulldate, sed_percent = sed_total/day_wear)]
+
+  # Create sedentary bout sequence
+  minute_acc[, non_sed := min_sed == 0]
+  minute_acc[, unique_sed_bout := bout_sequence(min_sed,non_sed,"60", return_index = TRUE)]
+  minute_acc[, sed_bout_length := bout_sequence(min_sed,non_sed,"60")]
+  minute_acc[, sed_bout_length := sed_bout_length/60L]
+
+  # Identify breaks
+  minute_acc[, index := .I]
+  wear_delta <- minute_acc$non_sed[-1L] != minute_acc$non_sed[-length(minute_acc$non_sed)]
+  delta <- data.table("index" = c(which(wear_delta), length(minute_acc$non_sed)))
+  delta[, change := TRUE]
+  minute_bouts <- merge(minute_acc,delta, by = c("index"), all = TRUE)
+  minute_bouts[, sed_to_up := ifelse(change == TRUE & non_sed == TRUE,1,0)]
+
+  # Create sed_breaks
+  sed_breaks <- minute_bouts[, list(sed_breaks = sum(sed_to_up, na.rm = TRUE)),
+                             by = list(id,fulldate)]
+
+  # Merge sed_breaks and sed_total for sed_breaks_ratio
+  temp_merge <- merge(sed_total,sed_breaks,by = c("id","fulldate"),all = TRUE)
+  sed_breaks_ratio <- temp_merge[, list(id,fulldate,
+                                        sed_breaks_ratio = sed_breaks/sed_total)]
+
+  # Create length of sedentary events
+  day_bouts <- minute_bouts[non_sed == FALSE,
+               list(sed_event_length = mean(sed_bout_length, na.rm = TRUE)),
+               by = list(id,fulldate,unique_sed_bout)]
+  sed_event_length <- day_bouts[, list(sed_event_length = mean(sed_event_length, na.rm = TRUE)),
+                               by = list(id,fulldate)]
+  # Some sedentary events may have a length of 0 if participant was not sedentary.
+  sed_event_length <- merge(temp_days,sed_event_length,by = c("id","fulldate"), all = TRUE)
+  sed_event_length[is.na(sed_event_length), sed_event_length := 0]
+
+  # Lock bouts to length exceeding 20, 60, and 120 minutes
+  # Get total sedentary time for each bouts
+  sed_total_over_20 <- minute_bouts[sed_bout_length >= (20),
+                               list(sed_total_over_20 = sum(min_sed, na.rm = TRUE)),
+                               by = list(id,fulldate)]
+  sed_total_over_20 <- merge(temp_days,sed_total_over_20,by = c("id","fulldate"), all = TRUE)
+  sed_total_over_20[is.na(sed_total_over_20), sed_total_over_20 := 0]
+
+  sed_total_over_60 <- minute_bouts[sed_bout_length >= (60),
+                                    list(sed_total_over_60 = sum(min_sed, na.rm = TRUE)),
+                                    by = list(id,fulldate)]
+  sed_total_over_60 <- merge(temp_days,sed_total_over_60,by = c("id","fulldate"), all = TRUE)
+  sed_total_over_60[is.na(sed_total_over_60), sed_total_over_60 := 0]
+
+  sed_total_over_120 <- minute_bouts[sed_bout_length >= (120),
+                                    list(sed_total_over_120 = sum(min_sed, na.rm = TRUE)),
+                                    by = list(id,fulldate)]
+  sed_total_over_120 <- merge(temp_days,sed_total_over_120,by = c("id","fulldate"), all = TRUE)
+  sed_total_over_120[is.na(sed_total_over_120), sed_total_over_120 := 0]
+
+  # Merge all totals to generate ratios
+  temp_merge <- merge(sed_total, sed_total_over_20, by = c("id","fulldate"), all = TRUE)
+  temp_merge <- merge(temp_merge, sed_total_over_60, by = c("id","fulldate"), all = TRUE)
+  temp_merge <- merge(temp_merge, sed_total_over_120, by = c("id","fulldate"), all = TRUE)
+  sed_ratio_over_20 <- temp_merge[,list(id,fulldate,sed_ratio_over_20 = sed_total_over_20/sed_total)]
+  sed_ratio_over_60 <- temp_merge[,list(id,fulldate,sed_ratio_over_60 = sed_total_over_60/sed_total)]
+  sed_ratio_over_120 <- temp_merge[,list(id,fulldate,sed_ratio_over_120 = sed_total_over_120/sed_total)]
+
+  # Use quantile() on previous day_bouts datatable
+  all_quantiles <- day_bouts[,list(quantile = quantile(sed_event_length,probs = c(0.05,0.25,0.50,0.75,0.95)),
+                          label = c(0.05,0.25,0.50,0.75,0.95)),
+                    by = list(id, fulldate)]
+  sed_5_percentile <- all_quantiles[label == 0.05, list(id,fulldate,sed_5_percentile = quantile)]
+  sed_25_percentile <- all_quantiles[label == 0.25, list(id,fulldate,sed_25_percentile = quantile)]
+  sed_50_percentile <- all_quantiles[label == 0.50, list(id,fulldate,sed_50_percentile = quantile)]
+  sed_75_percentile <- all_quantiles[label == 0.75, list(id,fulldate,sed_75_percentile = quantile)]
+  sed_95_percentile <- all_quantiles[label == 0.95, list(id,fulldate,sed_95_percentile = quantile)]
+
+  # Setting up analyses for alpha
+  day_bouts[, min_event := min(sed_event_length), by = list(id,fulldate)]
+  day_bouts[, m_def := log(sed_event_length/min_event)]
+  sed_alpha <- day_bouts[, list(sed_alpha = 1+(1/mean(m_def, na.rm = TRUE))),
+                         by = list(id, fulldate)]
+
+  # Using reldist and gini
+  sed_gini <- day_bouts[, list(sed_gini = gini(sed_event_length)), by = list(id,fulldate)]
+
+  # Generate datatable with only long sed bouts, then create sed_bout_long variables
+  sed_bouts <- day_bouts[sed_event_length < 60 & sed_event_length >= 30]
+  sed_bouts[, unique := 1L]
+  sed_bout_long_min <- sed_bouts[, list(sed_bout_long_min = sum(sed_event_length, na.rm = TRUE)),
+                                 by = list(id,fulldate)]
+  sed_bout_long_min <- merge(temp_days,sed_bout_long_min,by = c("id","fulldate"), all = TRUE)
+  sed_bout_long_min[is.na(sed_bout_long_min), sed_bout_long_min := 0]
+
+  sed_bout_long_count <- sed_bouts[, list(sed_bout_long_count = sum(unique, na.rm = TRUE)),
+                                   by = list(id,fulldate)]
+  sed_bout_long_count <- merge(temp_days,sed_bout_long_count,by = c("id","fulldate"), all = TRUE)
+  sed_bout_long_count[is.na(sed_bout_long_count), sed_bout_long_count := 0]
+
+
+  sed_features <- list(sed_total,
+                       sed_percent,
+                       sed_breaks,
+                       sed_breaks_ratio,
+                       sed_event_length,
+                       sed_total_over_20,
+                       sed_total_over_60,
+                       sed_total_over_120,
+                       sed_ratio_over_20,
+                       sed_ratio_over_60,
+                       sed_ratio_over_120,
+                       sed_5_percentile,
+                       sed_25_percentile,
+                       sed_50_percentile,
+                       sed_75_percentile,
+                       sed_95_percentile,
+                       sed_alpha,
+                       sed_gini,
+                       sed_bout_long_min,
+                       sed_bout_long_count)
+
+  return_sed <- Reduce(function(...) merge(..., by = c("id","fulldate"), all = T), sed_features)
+
+  return(return_sed)
 }
 
 ancillary_features <- function(acc_ageadjusted) {
-  # Standardizing to minute epochs for relevant variables
+  # Standardizing to minute epochs for relevant variables (Activity,Steps)
   epoch_acc <- acc_ageadjusted[valid_day == 1,
                         list(id,fulldate,Activity,Steps,fulltime,wear,age,divider)]
   epoch_acc[, hour := as.POSIXlt(fulltime)$hour]
   epoch_acc[, minute := as.POSIXlt(fulltime)$min]
-  minute_acc <- acc_ageadjusted[,
-                                list(min_activity = sum(Activity),
-                                     min_steps =  sum(Steps),
-                                     min_wear = sum(wear),
-                                     mean_age = mean(age),
-                                     min_divider = mean(divider)),
-                                 by = list(id,
-                                           fulldate,
-                                           hour,
-                                           minute)]
+  minute_acc <- epoch_acc[,
+                          list(min_activity = sum(Activity, na.rm = TRUE),
+                               min_steps =  sum(Steps),
+                               min_wear = sum(wear, na.rm = TRUE),
+                               mean_age = mean(age, na.rm = TRUE),
+                               min_divider = mean(divider, na.rm = TRUE)),
+                           by = list(id,
+                                     fulldate,
+                                     hour,
+                                     minute)]
   minute_acc[, min_wear := min_wear/min_divider]
 
   # Generating MET minutes
@@ -39,7 +188,7 @@ ancillary_features <- function(acc_ageadjusted) {
   # Screen unrealistic MET values
   minute_acc[met_mins > 20, met_mins := NA]
   # Create anc_met_hrs at day-level
-  anc_met_hrs <- minute_acc[, list(anc_met_hrs = sum(met_mins)/60), by=list(id,fulldate)]
+  anc_met_hrs <- minute_acc[, list(anc_met_hrs = sum(met_mins, na.rm = TRUE)/60), by=list(id,fulldate)]
 
   # Create binary stepping variable (step-mins)
   minute_acc[, min_bin_steps := ifelse(min_steps > 0,1,0)]
@@ -47,7 +196,7 @@ ancillary_features <- function(acc_ageadjusted) {
   # Create steps and wear time variable
   day_acc <- minute_acc[, list(anc_step_daily = sum(min_steps),
                                day_step_time = sum(min_bin_steps),
-                               day_wear = sum(min_wear)), by = list(id,fulldate)]
+                               day_wear = sum(min_wear, na.rm = TRUE)), by = list(id,fulldate)]
   anc_step_daily <- day_acc[, list(id,fulldate,anc_step_daily)]
   # Compute anc_step_percent
   anc_step_percent <- day_acc[, list(id,fulldate,anc_step_percent = day_step_time/day_wear)]
@@ -163,7 +312,7 @@ actigraph_mode_columns <- function(mode_integer) {
   return(mode_switch)
 }
 
-bout_sequence <- function(acc_stream, break_stream, epoch){ #, min_bout_length
+bout_sequence <- function(acc_stream, break_stream, epoch, return_index = FALSE){ #, min_bout_length
   acc_raw <- data.table("acc_stream" = as.integer(acc_stream), "break_stream" = as.integer(break_stream))
   epoch <- as.integer(epoch)
   bins <- nrow(acc_raw)
@@ -182,17 +331,20 @@ bout_sequence <- function(acc_stream, break_stream, epoch){ #, min_bout_length
   delta[1,reps := delta[1,index]]
 
   delta[, c("reflag","relength","rechange") := shift(.SD,1L,NA_integer_,type = "lag"),.SDcols = c("reference", "length", "change")]
-  #delta[, reflag := shift(reference,1L,NA_integer_,type = "lag")]
-  #delta[, relength := shift(length,1L,NA_integer_,type = "lag")]
-  #delta[, rechange := shift(change,1L,NA_integer_,type = "lag")]
+  delta[, index_ref := .I]
 
   delta[1,reflag := delta[2,reflag] - delta[1,index]]
   delta[1,relength := delta[1,reps] * epoch]
   delta[1,rechange := delta[1,reps]]
 
   acc_raw[, acc_var_length := rep(delta[,relength],delta[,rechange])]
+  acc_raw[, index := rep(delta[,index_ref],delta[,rechange])]
 
-  return(acc_raw[,acc_var_length])
+  if(return_index){
+    return(acc_raw[,index])
+  } else {
+    return(acc_raw[,acc_var_length])
+  }
 }
 
 ## Function
