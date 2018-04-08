@@ -15,7 +15,47 @@ sedentary_features <- function(acc_ageadjusted) {
 }
 
 ancillary_features <- function(acc_ageadjusted) {
+  # Freedson MET equations on raw activity counts at min-epochs
+  # Standardizing to minute epochs for relevant variables
+  epoch_acc <- acc_ageadjusted[valid_day == 1,
+                        list(id,fulldate,Activity,Steps,fulltime,wear,age,divider)]
+  epoch_acc[, hour := as.POSIXlt(fulltime)$hour]
+  epoch_acc[, minute := as.POSIXlt(fulltime)$min]
+  minute_acc <- acc_ageadjusted[,
+                                list(min_activity = sum(Activity),
+                                     min_steps =  sum(Steps),
+                                     min_wear = sum(wear),
+                                     mean_age = mean(age),
+                                     min_divider = mean(divider)),
+                                 by = list(id,
+                                           fulldate,
+                                           hour,
+                                           minute)]
+  minute_acc[, min_activity := min_activity/min_divider]
+  minute_acc[, min_wear := min_wear/min_divider]
+  minute_acc[, min_steps := min_steps/min_divider]
 
+  # Generating MET minutes
+  minute_acc[mean_age > 17, met_mins := 1.439008 + (0.000795 * min_activity)]
+  minute_acc[mean_age < 18, met_mins := 2.757 + (0.0015 * min_activity) - (0.08957 * mean_age) - (0.000038 * min_activity * mean_age)]
+  # Screen unrealistic MET values
+  minute_acc[met_mins > 20, met_mins := NA]
+  # Create anc_met_hrs at day-level
+  anc_met_hrs <- minute_acc[, list(anc_met_hrs = sum(met_mins)/60), by=list(id,fulldate)]
+
+  # Create anc_steps_daily and wear time variable
+  day_acc <- minute_acc[, list(anc_step_daily = sum(min_steps),
+                               day_wear = sum(min_wear)), by = list(id,fulldate)]
+  anc_step_daily <- day_acc[, list(id,fulldate,anc_step_daily)]
+  # Compute anc_step_percent
+  anc_step_percent <- day_acc[, list(id,fulldate,anc_step_percent = anc_step_daily/day_wear)]
+
+  # Merge anc* variables
+  merge_anc <- merge(anc_met_hrs,anc_step_daily, by = c("id","fulldate"), all = TRUE)
+  return_anc <- merge(merge_anc,anc_step_percent, by = c("id","fulldate"), all = TRUE)
+
+
+  return(return_anc)
 }
 
 light_features <- function(acc_ageadjusted) {
