@@ -29,7 +29,6 @@ sedentary_features <- function(acc_ageadjusted) {
   minute_acc[, min_wear := min_wear/min_divider]
   minute_acc[, min_sed := min_sed/min_divider]
 
-
   # Creating day level variables, including sed_total
   day_acc <- minute_acc[, list(sed_total = sum(min_sed, na.rm = TRUE),
                                day_wear = sum(min_wear, na.rm = TRUE)),
@@ -78,31 +77,59 @@ sedentary_features <- function(acc_ageadjusted) {
 
   # Lock bouts to length exceeding 20, 60, and 120 minutes
   # Get total sedentary time for each bouts
-  sed_total_over_20 <- minute_bouts[sed_bout_length >= (20),
+  sed_total_over_20 <- minute_bouts[sed_bout_length >= (20) & non_sed == FALSE,
                                list(sed_total_over_20 = sum(min_sed, na.rm = TRUE)),
                                by = list(id,fulldate)]
   sed_total_over_20 <- merge(temp_days,sed_total_over_20,by = c("id","fulldate"), all = TRUE)
   sed_total_over_20[is.na(sed_total_over_20), sed_total_over_20 := 0]
 
-  sed_total_over_60 <- minute_bouts[sed_bout_length >= (60),
+  sed_total_over_60 <- minute_bouts[sed_bout_length >= (60) & non_sed == FALSE,
                                     list(sed_total_over_60 = sum(min_sed, na.rm = TRUE)),
                                     by = list(id,fulldate)]
   sed_total_over_60 <- merge(temp_days,sed_total_over_60,by = c("id","fulldate"), all = TRUE)
   sed_total_over_60[is.na(sed_total_over_60), sed_total_over_60 := 0]
 
-  sed_total_over_120 <- minute_bouts[sed_bout_length >= (120),
+  sed_total_over_120 <- minute_bouts[sed_bout_length >= (120) & non_sed == FALSE,
                                     list(sed_total_over_120 = sum(min_sed, na.rm = TRUE)),
                                     by = list(id,fulldate)]
   sed_total_over_120 <- merge(temp_days,sed_total_over_120,by = c("id","fulldate"), all = TRUE)
   sed_total_over_120[is.na(sed_total_over_120), sed_total_over_120 := 0]
 
+  # Create unique index variable for fast counting
+  day_bouts[, uniques := 1]
+  unique_sed_total_over_20 <- minute_bouts[sed_bout_length >= (20) & non_sed == FALSE,
+                                            list(length = mean(sed_bout_length, na.rm = TRUE)),
+                                            by = list(id,fulldate,unique_sed_bout)]
+  unique_sed_total_over_20[, uniques := 1]
+  unique_sed_total_over_60 <- minute_bouts[sed_bout_length >= (60) & non_sed == FALSE,
+                                           list(length = mean(sed_bout_length, na.rm = TRUE)),
+                                           by = list(id,fulldate,unique_sed_bout)]
+  unique_sed_total_over_60[, uniques := 1]
+  unique_sed_total_over_120 <- minute_bouts[sed_bout_length >= (120) & non_sed == FALSE,
+                                            list(length = mean(sed_bout_length, na.rm = TRUE)),
+                                            by = list(id,fulldate,unique_sed_bout)]
+  unique_sed_total_over_120[, uniques := 1]
+
+
   # Merge all totals to generate ratios
-  temp_merge <- merge(sed_total, sed_total_over_20, by = c("id","fulldate"), all = TRUE)
-  temp_merge <- merge(temp_merge, sed_total_over_60, by = c("id","fulldate"), all = TRUE)
-  temp_merge <- merge(temp_merge, sed_total_over_120, by = c("id","fulldate"), all = TRUE)
-  sed_ratio_over_20 <- temp_merge[,list(id,fulldate,sed_ratio_over_20 = sed_total_over_20/sed_total)]
-  sed_ratio_over_60 <- temp_merge[,list(id,fulldate,sed_ratio_over_60 = sed_total_over_60/sed_total)]
-  sed_ratio_over_120 <- temp_merge[,list(id,fulldate,sed_ratio_over_120 = sed_total_over_120/sed_total)]
+  count_day_bouts <- day_bouts[, list(count_day_bouts = sum(uniques)),
+                               by = list(id, fulldate)]
+  count_20_bouts <- unique_sed_total_over_20[, list(count_20_bouts = sum(uniques)),
+                               by = list(id, fulldate)]
+  count_60_bouts <- unique_sed_total_over_60[, list(count_60_bouts = sum(uniques)),
+                               by = list(id, fulldate)]
+  count_120_bouts <- unique_sed_total_over_120[, list(count_120_bouts = sum(uniques)),
+                               by = list(id, fulldate)]
+  count_list <- list(count_day_bouts, count_20_bouts, count_60_bouts, count_120_bouts)
+  temp_merge <- Reduce(function(...) merge(..., by = c("id","fulldate"), all = T), count_list)
+  temp_merge[is.na(count_20_bouts), count_20_bouts := 0]
+  temp_merge[is.na(count_60_bouts), count_60_bouts := 0]
+  temp_merge[is.na(count_120_bouts), count_120_bouts := 0]
+
+  # Creating ratios
+  sed_ratio_over_20 <- temp_merge[,list(id,fulldate,sed_ratio_over_20 = count_20_bouts/count_day_bouts)]
+  sed_ratio_over_60 <- temp_merge[,list(id,fulldate,sed_ratio_over_60 = count_60_bouts/count_day_bouts)]
+  sed_ratio_over_120 <- temp_merge[,list(id,fulldate,sed_ratio_over_120 = count_120_bouts/count_day_bouts)]
 
   # Use quantile() on previous day_bouts datatable
   all_quantiles <- day_bouts[,list(quantile = quantile(sed_event_length,probs = c(0.05,0.25,0.50,0.75,0.95)),
@@ -125,13 +152,12 @@ sedentary_features <- function(acc_ageadjusted) {
 
   # Generate datatable with only long sed bouts, then create sed_bout_long variables
   sed_bouts <- day_bouts[sed_event_length < 60 & sed_event_length >= 30]
-  sed_bouts[, unique := 1L]
   sed_bout_long_min <- sed_bouts[, list(sed_bout_long_min = sum(sed_event_length, na.rm = TRUE)),
                                  by = list(id,fulldate)]
   sed_bout_long_min <- merge(temp_days,sed_bout_long_min,by = c("id","fulldate"), all = TRUE)
   sed_bout_long_min[is.na(sed_bout_long_min), sed_bout_long_min := 0]
 
-  sed_bout_long_count <- sed_bouts[, list(sed_bout_long_count = sum(unique, na.rm = TRUE)),
+  sed_bout_long_count <- sed_bouts[, list(sed_bout_long_count = sum(uniques, na.rm = TRUE)),
                                    by = list(id,fulldate)]
   sed_bout_long_count <- merge(temp_days,sed_bout_long_count,by = c("id","fulldate"), all = TRUE)
   sed_bout_long_count[is.na(sed_bout_long_count), sed_bout_long_count := 0]
@@ -209,7 +235,162 @@ ancillary_features <- function(acc_ageadjusted) {
 }
 
 light_features <- function(acc_ageadjusted) {
+  # Standardizing to minute epochs for relevant variables (sed)
+  epoch_acc <- acc_ageadjusted[valid_day == 1,
+                               list(id,fulldate,light,fulltime,wear,age,divider)]
+  epoch_acc[, hour := as.POSIXlt(fulltime)$hour]
+  epoch_acc[, minute := as.POSIXlt(fulltime)$min]
+  minute_acc <- epoch_acc[,
+                          list(min_light =  sum(light, na.rm = TRUE),
+                               min_wear = sum(wear, na.rm = TRUE),
+                               mean_age = mean(age, na.rm = TRUE),
+                               min_divider = mean(divider, na.rm = TRUE)),
+                          by = list(id,
+                                    fulldate,
+                                    hour,
+                                    minute)]
+  minute_acc[, min_wear := min_wear/min_divider]
+  minute_acc[, min_light := min_light/min_divider]
 
+  # Creating day level variables, including light_total
+  day_acc <- minute_acc[, list(light_total = sum(min_light, na.rm = TRUE),
+                               day_wear = sum(min_wear, na.rm = TRUE)),
+                        by = list(id,fulldate)]
+
+  # Some variables may have meaningful non-missing values,
+  # so we create a distribution of all valid days to merge in
+  temp_days <- day_acc[,list(id,fulldate)]
+
+  # Output light_total
+  light_total <- day_acc[, list(id,fulldate,light_total)]
+  #####sed_percent <- day_acc[, list(id, fulldate, sed_percent = sed_total/day_wear)]
+
+  # Create light bout sequence
+  minute_acc[, non_light := min_light == 0]
+  minute_acc[, unique_light_bout := bout_sequence(min_light,non_light,"60", return_index = TRUE)]
+  minute_acc[, light_bout_length := bout_sequence(min_light,non_light,"60")]
+  minute_acc[, light_bout_length := light_bout_length/60L]
+
+  #### Identify breaks
+  minute_acc[, index := .I]
+  wear_delta <- minute_acc$non_sed[-1L] != minute_acc$non_sed[-length(minute_acc$non_sed)]
+  delta <- data.table("index" = c(which(wear_delta), length(minute_acc$non_sed)))
+  delta[, change := TRUE]
+  minute_bouts <- merge(minute_acc,delta, by = c("index"), all = TRUE)
+  minute_bouts[, sed_to_up := ifelse(change == TRUE & non_light == TRUE,1,0)]
+
+  # Create length of light events
+  day_bouts <- minute_bouts[non_light == FALSE,
+                            list(light_event_length = mean(light_bout_length, na.rm = TRUE)),
+                            by = list(id,fulldate,unique_light_bout)]
+  light_event_length <- day_bouts[, list(light_event_length = mean(light_event_length, na.rm = TRUE)),
+                                by = list(id,fulldate)]
+  # Some light events may have a length of 0 if participant was not sedentary.
+  light_event_length <- merge(temp_days,light_event_length,by = c("id","fulldate"), all = TRUE)
+  light_event_length[is.na(light_event_length), light_event_length := 0]
+
+  # Lock bouts to length exceeding 5, 10, and 30 minutes
+  # Get total light time for each bouts
+  light_total_over_5 <- minute_bouts[light_bout_length >= (5) & non_light == FALSE,
+                                    list(light_total_over_5 = sum(min_light, na.rm = TRUE)),
+                                    by = list(id,fulldate)]
+  light_total_over_5 <- merge(temp_days,light_total_over_5,by = c("id","fulldate"), all = TRUE)
+  light_total_over_5[is.na(light_total_over_5), light_total_over_5 := 0]
+
+  light_total_over_10 <- minute_bouts[light_bout_length >= (10) & non_light == FALSE,
+                                     list(light_total_over_10 = sum(min_light, na.rm = TRUE)),
+                                     by = list(id,fulldate)]
+  light_total_over_10 <- merge(temp_days,light_total_over_10,by = c("id","fulldate"), all = TRUE)
+  light_total_over_10[is.na(light_total_over_10), light_total_over_10 := 0]
+
+  light_total_over_30 <- minute_bouts[light_bout_length >= (30) & non_light == FALSE,
+                                     list(light_total_over_30 = sum(min_light, na.rm = TRUE)),
+                                     by = list(id,fulldate)]
+  light_total_over_30 <- merge(temp_days,light_total_over_30,by = c("id","fulldate"), all = TRUE)
+  light_total_over_30[is.na(light_total_over_30), light_total_over_30 := 0]
+
+  # Create unique index variable for fast counting
+  day_bouts[, uniques := 1]
+  unique_light_total_over_5 <- minute_bouts[light_bout_length >= (5) & non_light == FALSE,
+                                           list(length = mean(light_bout_length, na.rm = TRUE)),
+                                           by = list(id,fulldate,unique_light_bout)]
+  unique_light_total_over_5[, uniques := 1]
+  unique_light_total_over_10 <- minute_bouts[light_bout_length >= (10) & non_light == FALSE,
+                                            list(length = mean(light_bout_length, na.rm = TRUE)),
+                                            by = list(id,fulldate,unique_light_bout)]
+  unique_light_total_over_10[, uniques := 1]
+  unique_light_total_over_30 <- minute_bouts[light_bout_length >= (30) & non_light == FALSE,
+                                            list(length = mean(light_bout_length, na.rm = TRUE)),
+                                            by = list(id,fulldate,unique_light_bout)]
+  unique_light_total_over_30[, uniques := 1]
+
+
+  # Merge all totals to generate ratios
+  # Also, creates output variables
+  count_day_bouts <- day_bouts[, list(count_day_bouts = sum(uniques)),
+                               by = list(id, fulldate)]
+  light_events <- count_day_bouts[, list(id, fulldate, light_events = count_day_bouts)]
+  light_events <- merge(temp_days,light_events,by = c("id","fulldate"), all = TRUE)
+  light_events[is.na(light_events), light_events := 0]
+
+
+  count_5_bouts <- unique_light_total_over_5[, list(count_5_bouts = sum(uniques)),
+                                             by = list(id, fulldate)]
+  count_10_bouts <- unique_light_total_over_10[, list(count_10_bouts = sum(uniques)),
+                                             by = list(id, fulldate)]
+  count_30_bouts <- unique_light_total_over_30[, list(count_30_bouts = sum(uniques)),
+                                               by = list(id, fulldate)]
+  count_list <- list(count_day_bouts, count_5_bouts, count_10_bouts, count_30_bouts)
+  temp_merge <- Reduce(function(...) merge(..., by = c("id","fulldate"), all = T), count_list)
+  temp_merge[is.na(count_5_bouts), count_5_bouts := 0]
+  temp_merge[is.na(count_10_bouts), count_10_bouts := 0]
+  temp_merge[is.na(count_30_bouts), count_30_bouts := 0]
+
+  # Creating ratios
+  light_ratio_over_5 <- temp_merge[,list(id,fulldate,light_ratio_over_5 = count_5_bouts/count_day_bouts)]
+  light_ratio_over_10 <- temp_merge[,list(id,fulldate,light_ratio_over_10 = count_10_bouts/count_day_bouts)]
+  light_ratio_over_30 <- temp_merge[,list(id,fulldate,light_ratio_over_30 = count_30_bouts/count_day_bouts)]
+
+  # Use quantile() on previous day_bouts datatable
+  all_quantiles <- day_bouts[,list(quantile = quantile(light_event_length,probs = c(0.05,0.25,0.50,0.75,0.95)),
+                                   label = c(0.05,0.25,0.50,0.75,0.95)),
+                             by = list(id, fulldate)]
+  light_5_percentile <- all_quantiles[label == 0.05, list(id,fulldate,light_5_percentile = quantile)]
+  light_25_percentile <- all_quantiles[label == 0.25, list(id,fulldate,light_25_percentile = quantile)]
+  light_50_percentile <- all_quantiles[label == 0.50, list(id,fulldate,light_50_percentile = quantile)]
+  light_75_percentile <- all_quantiles[label == 0.75, list(id,fulldate,light_75_percentile = quantile)]
+  light_95_percentile <- all_quantiles[label == 0.95, list(id,fulldate,light_95_percentile = quantile)]
+
+  # Setting up analyses for alpha
+  day_bouts[, min_event := min(light_event_length), by = list(id,fulldate)]
+  day_bouts[, m_def := log(light_event_length/min_event)]
+  light_alpha <- day_bouts[, list(light_alpha = 1+(1/mean(m_def, na.rm = TRUE))),
+                         by = list(id, fulldate)]
+
+  # Using reldist and gini
+  light_gini <- day_bouts[, list(sed_gini = gini(light_event_length)), by = list(id,fulldate)]
+
+
+  sed_features <- list(light_total,
+                       light_events,
+                       light_event_length,
+                       light_ratio_over_5,
+                       light_ratio_over_10,
+                       light_ratio_over_30,
+                       light_total_over_5,
+                       light_total_over_10,
+                       light_total_over_30,
+                       light_5_percentile,
+                       light_25_percentile,
+                       light_50_percentile,
+                       light_75_percentile,
+                       light_95_percentile,
+                       light_alpha,
+                       light_gini)
+
+  return_light <- Reduce(function(...) merge(..., by = c("id","fulldate"), all = T), sed_features)
+
+  return(return_sed)
 }
 
 active_features <- function(acc_ageadjusted) {
