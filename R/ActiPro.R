@@ -10,7 +10,14 @@
 #' @import eeptools
 #' @import reldist
 
-
+#' Produce novel sedentary features
+#'
+#' @param acc_ageadjusted the file created by ActiPro
+#'
+#' @return A data.table containing a set of novel statistical parameters based on Keadle
+#'
+#'
+#' @export
 sedentary_features <- function(acc_ageadjusted) {
   # Standardizing to minute epochs for relevant variables (sed)
   epoch_acc <- acc_ageadjusted[valid_day == 1,
@@ -44,8 +51,9 @@ sedentary_features <- function(acc_ageadjusted) {
 
   # Create sedentary bout sequence
   minute_acc[, non_sed := min_sed == 0]
-  minute_acc[, unique_sed_bout := bout_sequence(min_sed,non_sed,"60", return_index = TRUE)]
-  minute_acc[, sed_bout_length := bout_sequence(min_sed,non_sed,"60")]
+  minute_acc[, true_sed := min_sed > 0]
+  minute_acc[, unique_sed_bout := bout_sequence(true_sed,non_sed,"60", return_index = TRUE)]
+  minute_acc[, sed_bout_length := bout_sequence(true_sed,non_sed,"60")]
   minute_acc[, sed_bout_length := sed_bout_length/60L]
 
   # Identify breaks
@@ -120,8 +128,9 @@ sedentary_features <- function(acc_ageadjusted) {
                                by = list(id, fulldate)]
   count_120_bouts <- unique_sed_total_over_120[, list(count_120_bouts = sum(uniques)),
                                by = list(id, fulldate)]
-  count_list <- list(count_day_bouts, count_20_bouts, count_60_bouts, count_120_bouts)
+  count_list <- list(temp_days,count_day_bouts, count_20_bouts, count_60_bouts, count_120_bouts)
   temp_merge <- Reduce(function(...) merge(..., by = c("id","fulldate"), all = T), count_list)
+  temp_merge[is.na(count_day_bouts), count_day_bouts := 0]
   temp_merge[is.na(count_20_bouts), count_20_bouts := 0]
   temp_merge[is.na(count_60_bouts), count_60_bouts := 0]
   temp_merge[is.na(count_120_bouts), count_120_bouts := 0]
@@ -189,6 +198,14 @@ sedentary_features <- function(acc_ageadjusted) {
   return(return_sed)
 }
 
+#' Produce novel ancillary activity features
+#'
+#' @param acc_ageadjusted the file created by ActiPro
+#'
+#' @return A data.table containing a set of novel statistical parameters based on Keadle
+#'
+#'
+#' @export
 ancillary_features <- function(acc_ageadjusted) {
   # Standardizing to minute epochs for relevant variables (Activity,Steps)
   epoch_acc <- acc_ageadjusted[valid_day == 1,
@@ -234,6 +251,14 @@ ancillary_features <- function(acc_ageadjusted) {
   return(return_anc)
 }
 
+#' Produce novel light activity features
+#'
+#' @param acc_ageadjusted the file created by ActiPro
+#'
+#' @return A data.table containing a set of novel statistical parameters based on Keadle
+#'
+#'
+#' @export
 light_features <- function(acc_ageadjusted) {
   # Standardizing to minute epochs for relevant variables (sed)
   epoch_acc <- acc_ageadjusted[valid_day == 1,
@@ -267,8 +292,9 @@ light_features <- function(acc_ageadjusted) {
 
   # Create light bout sequence
   minute_acc[, non_light := min_light == 0]
-  minute_acc[, unique_light_bout := bout_sequence(min_light,non_light,"60", return_index = TRUE)]
-  minute_acc[, light_bout_length := bout_sequence(min_light,non_light,"60")]
+  minute_acc[, true_light := min_light > 0]
+  minute_acc[, unique_light_bout := bout_sequence(true_light,non_light,"60", return_index = TRUE)]
+  minute_acc[, light_bout_length := bout_sequence(true_light,non_light,"60")]
   minute_acc[, light_bout_length := light_bout_length/60L]
 
   #### Identify breaks
@@ -340,8 +366,9 @@ light_features <- function(acc_ageadjusted) {
                                              by = list(id, fulldate)]
   count_30_bouts <- unique_light_total_over_30[, list(count_30_bouts = sum(uniques)),
                                                by = list(id, fulldate)]
-  count_list <- list(count_day_bouts, count_5_bouts, count_10_bouts, count_30_bouts)
+  count_list <- list(temp_days,count_day_bouts, count_5_bouts, count_10_bouts, count_30_bouts)
   temp_merge <- Reduce(function(...) merge(..., by = c("id","fulldate"), all = T), count_list)
+  temp_merge[is.na(count_day_bouts), count_day_bouts := 0]
   temp_merge[is.na(count_5_bouts), count_5_bouts := 0]
   temp_merge[is.na(count_10_bouts), count_10_bouts := 0]
   temp_merge[is.na(count_30_bouts), count_30_bouts := 0]
@@ -390,12 +417,249 @@ light_features <- function(acc_ageadjusted) {
 
   return_light <- Reduce(function(...) merge(..., by = c("id","fulldate"), all = T), sed_features)
 
-  return(return_sed)
+  return(return_light)
 }
 
-active_features <- function(acc_ageadjusted) {
+#' Produce novel MVPA features
+#'
+#' @param acc_ageadjusted the file created by ActiPro
+#'
+#' @return A data.table containing a set of novel statistical parameters based on Keadle
+#'
+#'
+#' @export
+mvpa_features <- function(acc_ageadjusted) {
+  # Standardizing to minute epochs for relevant variables (mvpa and Activity)
+  epoch_acc <- acc_ageadjusted[valid_day == 1,
+                               list(id,fulldate,Activity,
+                                    mvpa = as.integer(mod == 1 | vig == 1),
+                                    fulltime,wear,age,divider)]
+  epoch_acc[, hour := as.POSIXlt(fulltime)$hour]
+  epoch_acc[, minute := as.POSIXlt(fulltime)$min]
+  minute_acc <- epoch_acc[,
+                          list(min_mvpa =  sum(mvpa, na.rm = TRUE),
+                               min_wear = sum(wear, na.rm = TRUE),
+                               mean_age = mean(age, na.rm = TRUE),
+                               min_activity = sum(Activity, na.rm = TRUE),
+                               min_divider = mean(divider, na.rm = TRUE)),
+                          by = list(id,
+                                    fulldate,
+                                    hour,
+                                    minute)]
+  minute_acc[, min_wear := min_wear/min_divider]
+  minute_acc[, min_mvpa := min_mvpa/min_divider]
 
-}
+  # Generating MET minutes
+  # Freedson MET equations on raw activity counts at min-epochs
+  minute_acc[mean_age > 17, met_mins := 1.439008 + (0.000795 * min_activity)]
+  minute_acc[mean_age < 18, met_mins := 2.757 + (0.0015 * min_activity) - (0.08957 * mean_age) - (0.000038 * min_activity * mean_age)]
+  # Screen unrealistic MET values
+  minute_acc[met_mins > 20, met_mins := NA]
+  # Create anc_met_hrs at day-level
+  ####anc_met_hrs <- minute_acc[, list(anc_met_hrs = sum(met_mins, na.rm = TRUE)/60), by=list(id,fulldate)]
+
+
+  # Creating day level variables, including mvpa_total and met max
+  day_acc <- minute_acc[, list(mvpa_total = sum(min_mvpa, na.rm = TRUE),
+                               day_wear = sum(min_wear, na.rm = TRUE)),
+                        by = list(id,fulldate)]
+
+  # Some variables may have meaningful non-missing values,
+  # so we create a distribution of all valid days to merge in
+  temp_days <- day_acc[,list(id,fulldate)]
+
+  # Output mvpa_total
+  mvpa_total <- day_acc[, list(id,fulldate,mvpa_total)]
+
+  # Output mvpa_met_max
+  mvpa_met_max <- minute_acc[min_mvpa > 0,
+                             list(mvpa_met_max = max(met_mins, na.rm = TRUE)),
+                             by = list(id,fulldate)]
+  ####mvpa_percent <- day_acc[, list(id, fulldate, mvpa_percent = mvpa_total/day_wear)]
+
+  # Create MVPA bout sequence
+  minute_acc[, non_mvpa := min_mvpa == 0]
+  minute_acc[, true_mvpa := min_mvpa > 0]
+  minute_acc[, unique_mvpa_bout := bout_sequence(true_mvpa,non_mvpa,"60", return_index = TRUE)]
+  minute_acc[, mvpa_bout_length := bout_sequence(true_mvpa,non_mvpa,"60")]
+  minute_acc[, mvpa_bout_length := mvpa_bout_length/60L]
+
+  # Integrating new 2-minute threshold variables
+  minute_acc[, mvpa_new := ifelse((mvpa_bout_length <= 2
+                                   & non_mvpa == 1),1
+                                  ,true_mvpa)]
+  minute_acc[, mvpa_new_break := as.integer(!mvpa_new)]
+  minute_acc[, mvpa_new_length := bout_sequence(mvpa_new, mvpa_new_break, epoch)]
+  minute_acc[, mvpa_new_length := mvpa_new_length/60L]
+  minute_acc[, mvpa_new_index := bout_sequence(mvpa_new, mvpa_new_break, epoch, return_index = TRUE)]
+  minute_acc[, mvpa_guideline_bout := as.integer(mvpa_new_length >= 10 & mvpa_new == 1)]
+  minute_acc[, mvpa_sporadic_bout := as.integer(mvpa_bout_length < 10 & mvpa_guideline_bout == 0 & true_mvpa == 1)]
+
+
+  # Identify breaks
+  minute_acc[, index := .I]
+  wear_delta <- minute_acc$non_mvpa[-1L] != minute_acc$non_mvpa[-length(minute_acc$non_mvpa)]
+  delta <- data.table("index" = c(which(wear_delta), length(minute_acc$non_mvpa)))
+  delta[, change := TRUE]
+  minute_bouts <- merge(minute_acc,delta, by = c("index"), all = TRUE)
+  minute_bouts[, mvpa_to_up := ifelse(change == TRUE & non_mvpa == TRUE,1,0)]
+
+  # Create mvpa_breaks
+  ####mvpa_breaks <- minute_bouts[, list(mvpa_breaks = sum(mvpa_to_up, na.rm = TRUE)),
+  ####                            by = list(id,fulldate)]
+
+  # Merge mvpa_breaks and mvpa_total for mvpa_breaks_ratio
+  ####temp_merge <- merge(mvpa_total,mvpa_breaks,by = c("id","fulldate"),all = TRUE)
+  ####mvpa_breaks_ratio <- temp_merge[, list(id,fulldate,
+  ####                                       mvpa_breaks_ratio = mvpa_breaks/mvpa_total)]
+
+
+  # Create length of MVPA events - general,sporadic and guideline
+  day_bouts <- minute_bouts[non_mvpa == FALSE,
+                            list(mvpa_event_length = mean(mvpa_bout_length, na.rm = TRUE)),
+                            by = list(id,fulldate,unique_mvpa_bout)]
+  sporadic_day_bouts <- minute_bouts[mvpa_sporadic_bout == 1,
+                            list(mvpa_event_length = mean(mvpa_bout_length, na.rm = TRUE),
+                                 met_mins = sum(met_mins, na.rm = TRUE)),
+                            by = list(id,fulldate,unique_mvpa_bout)]
+  guideline_day_bouts <- minute_bouts[mvpa_guideline_bout == 1,
+                                     list(mvpa_event_length = mean(mvpa_new_length, na.rm = TRUE),
+                                          met_mins = sum(met_mins, na.rm = TRUE)),
+                                     by = list(id,fulldate,mvpa_new_index)]
+
+  mvpa_guideline_length <- guideline_day_bouts[, list(mvpa_guideline_length = mean(mvpa_event_length, na.rm = TRUE)),
+                                 by = list(id,fulldate)]
+  # Some MVPA events may have a length of 0 if participant was not in MVPA.
+  mvpa_guideline_length <- merge(temp_days,mvpa_guideline_length,by = c("id","fulldate"), all = TRUE)
+  mvpa_guideline_length[is.na(mvpa_guideline_length), mvpa_guideline_length := 0]
+
+
+  # Creating unique sporadic events, total time, and met_hrs
+  sporadic_day_bouts[, uniques := 1]
+  mvpa_sporadic_events <- sporadic_day_bouts[,list(mvpa_sporadic_events = sum(uniques)),
+                                                   by = list(id, fulldate)]
+  mvpa_sporadic_events <- merge(temp_days,mvpa_sporadic_events,by = c("id","fulldate"), all = TRUE)
+  mvpa_sporadic_events[is.na(mvpa_sporadic_events), mvpa_sporadic_events := 0]
+  mvpa_sporadic_min <- sporadic_day_bouts[,list(mvpa_sporadic_min = sum(mvpa_event_length)),
+                                          by = list(id, fulldate)]
+  mvpa_sporadic_min <- merge(temp_days,mvpa_sporadic_min,by = c("id","fulldate"), all = TRUE)
+  mvpa_sporadic_min[is.na(mvpa_sporadic_min), mvpa_sporadic_min := 0]
+  mvpa_sporadic_met_hrs <- sporadic_day_bouts[,list(mvpa_sporadic_met_hrs = sum(met_mins)/60L),
+                                              by = list(id, fulldate)]
+  mvpa_sporadic_met_hrs <- merge(temp_days,mvpa_sporadic_met_hrs,by = c("id","fulldate"), all = TRUE)
+  mvpa_sporadic_met_hrs[is.na(mvpa_sporadic_met_hrs), mvpa_sporadic_met_hrs := 0]
+
+  guideline_day_bouts[, uniques := 1]
+  mvpa_guideline_bouts <- guideline_day_bouts[,list(mvpa_guideline_bouts = sum(uniques)),
+                                             by = list(id, fulldate)]
+  mvpa_guideline_bouts <- merge(temp_days,mvpa_guideline_bouts,by = c("id","fulldate"), all = TRUE)
+  mvpa_guideline_bouts[is.na(mvpa_guideline_bouts), mvpa_guideline_bouts := 0]
+  mvpa_guideline_min <- guideline_day_bouts[,list(mvpa_guideline_min = sum(mvpa_event_length)),
+                                           by = list(id, fulldate)]
+  mvpa_guideline_min <- merge(temp_days,mvpa_guideline_min,by = c("id","fulldate"), all = TRUE)
+  mvpa_guideline_min[is.na(mvpa_guideline_min), mvpa_guideline_min := 0]
+  mvpa_guideline_met_hrs <- guideline_day_bouts[,list(mvpa_guideline_met_hrs = sum(met_mins)/60L),
+                                               by = list(id, fulldate)]
+  mvpa_guideline_met_hrs <- merge(temp_days,mvpa_guideline_met_hrs,by = c("id","fulldate"), all = TRUE)
+  mvpa_guideline_met_hrs[is.na(mvpa_guideline_met_hrs), mvpa_guideline_met_hrs := 0]
+
+  # Lock bouts to length exceeding 2, 5, 10 for general
+  # Lock bouts to length exceeding 10 and 20 for guideline
+  # Get total MVPA time for each bout
+  ####mvpa_total_over_2 <- minute_bouts[mvpa_bout_length >= (2) & non_mvpa == FALSE,
+  ####                                   list(mvpa_total_over_2 = sum(min_mvpa, na.rm = TRUE)),
+  ####                                   by = list(id,fulldate)]
+  ####mvpa_total_over_2 <- merge(temp_days,mvpa_total_over_20,by = c("id","fulldate"), all = TRUE)
+  ####mvpa_total_over_2[is.na(mvpa_total_over_20), mvpa_total_over_20 := 0]
+
+  ####mvpa_total_over_5 <- minute_bouts[mvpa_bout_length >= (5) & non_mvpa == FALSE,
+  ####                                   list(mvpa_total_over_5 = sum(min_mvpa, na.rm = TRUE)),
+  ####                                   by = list(id,fulldate)]
+  ####mvpa_total_over_5 <- merge(temp_days,mvpa_total_over_60,by = c("id","fulldate"), all = TRUE)
+  ####mvpa_total_over_5[is.na(mvpa_total_over_60), mvpa_total_over_60 := 0]
+
+  ####mvpa_total_over_10 <- minute_bouts[mvpa_bout_length >= (10) & non_mvpa == FALSE,
+  ####                                    list(mvpa_total_over_10 = sum(min_mvpa, na.rm = TRUE)),
+  ####                                    by = list(id,fulldate)]
+  ####mvpa_total_over_10 <- merge(temp_days,mvpa_total_over_120,by = c("id","fulldate"), all = TRUE)
+  ####mvpa_total_over_10[is.na(mvpa_total_over_120), mvpa_total_over_120 := 0]
+
+  # Create unique index variable for fast counting
+  day_bouts[, uniques := 1]
+  unique_mvpa_total_over_2 <- minute_bouts[mvpa_bout_length >= (2) & non_mvpa == FALSE,
+                                            list(length = mean(mvpa_bout_length, na.rm = TRUE)),
+                                            by = list(id,fulldate,unique_mvpa_bout)]
+  unique_mvpa_total_over_2[, uniques := 1]
+  unique_mvpa_total_over_5 <- minute_bouts[mvpa_bout_length >= (5) & non_mvpa == FALSE,
+                                            list(length = mean(mvpa_bout_length, na.rm = TRUE)),
+                                            by = list(id,fulldate,unique_mvpa_bout)]
+  unique_mvpa_total_over_5[, uniques := 1]
+  unique_mvpa_total_over_10 <- minute_bouts[mvpa_bout_length >= (10) & non_mvpa == FALSE,
+                                             list(length = mean(mvpa_bout_length, na.rm = TRUE)),
+                                             by = list(id,fulldate,unique_mvpa_bout)]
+  unique_mvpa_total_over_10[, uniques := 1]
+  unique_guide_total_over_10 <- minute_bouts[mvpa_new_length >= (2) & mvpa_guideline_bout == TRUE,
+                                           list(length = mean(mvpa_new_length, na.rm = TRUE)),
+                                           by = list(id,fulldate,mvpa_new_index)]
+  unique_guide_total_over_10[, uniques := 1]
+  unique_guide_total_over_20 <- minute_bouts[mvpa_new_length >= (5) & mvpa_guideline_bout == TRUE,
+                                           list(length = mean(mvpa_new_length, na.rm = TRUE)),
+                                           by = list(id,fulldate,mvpa_new_index)]
+  unique_guide_total_over_20[, uniques := 1]
+
+
+  # Merge all totals to generate ratios
+  count_day_bouts <- day_bouts[, list(count_day_bouts = sum(uniques)),
+                               by = list(id, fulldate)]
+  count_2_bouts <- unique_mvpa_total_over_2[, list(count_2_bouts = sum(uniques)),
+                                              by = list(id, fulldate)]
+  count_5_bouts <- unique_mvpa_total_over_5[, list(count_5_bouts = sum(uniques)),
+                                              by = list(id, fulldate)]
+  count_10_bouts <- unique_mvpa_total_over_10[, list(count_10_bouts = sum(uniques)),
+                                                by = list(id, fulldate)]
+  count_10_long_bouts <- unique_guide_total_over_10[, list(count_10_long_bouts = sum(uniques)),
+                                             by = list(id, fulldate)]
+  count_20_long_bouts <- unique_guide_total_over_20[, list(count_20_long_bouts = sum(uniques)),
+                                               by = list(id, fulldate)]
+  count_list <- list(temp_days,count_day_bouts, count_2_bouts, count_5_bouts, count_10_bouts,
+                     count_10_long_bouts,count_20_long_bouts)
+  temp_merge <- Reduce(function(...) merge(..., by = c("id","fulldate"), all = T), count_list)
+  temp_merge[is.na(count_day_bouts), count_day_bouts := 0]
+  temp_merge[is.na(count_2_bouts), count_2_bouts := 0]
+  temp_merge[is.na(count_5_bouts), count_5_bouts := 0]
+  temp_merge[is.na(count_10_bouts), count_10_bouts := 0]
+  temp_merge[is.na(count_10_long_bouts), count_10_long_bouts := 0]
+  temp_merge[is.na(count_20_long_bouts), count_20_long_bouts := 0]
+
+  # Creating ratios
+  mvpa_ratio_over_2 <- temp_merge[,list(id,fulldate,mvpa_ratio_over_2 = count_2_bouts/count_day_bouts)]
+  mvpa_ratio_over_5 <- temp_merge[,list(id,fulldate,mvpa_ratio_over_5 = count_5_bouts/count_day_bouts)]
+  mvpa_ratio_over_10 <- temp_merge[,list(id,fulldate,mvpa_ratio_over_10 = count_10_bouts/count_day_bouts)]
+  mvpa_ratio_long_10 <- temp_merge[,list(id,fulldate,mvpa_ratio_long_10 = count_10_long_bouts/count_day_bouts)]
+  mvpa_ratio_long_20 <- temp_merge[,list(id,fulldate,mvpa_ratio_long_20 = count_20_long_bouts/count_day_bouts)]
+
+
+
+  mvpa_features <- list(mvpa_total,
+                        mvpa_guideline_min,
+                        mvpa_sporadic_min,
+                        mvpa_sporadic_events,
+                        mvpa_sporadic_met_hrs,
+                        mvpa_ratio_over_2,
+                        mvpa_ratio_over_5,
+                        mvpa_ratio_over_10,
+                        mvpa_ratio_long_10,
+                        mvpa_ratio_long_20,
+                        mvpa_met_max,
+                        mvpa_guideline_met_hrs,
+                        mvpa_guideline_bouts,
+                        mvpa_guideline_length)
+
+  return_mvpa <- Reduce(function(...) merge(..., by = c("id","fulldate"), all = T), mvpa_features)
+
+  return(return_mvpa)
+
+  }
 
 # JZ Commit
 #    ActiPro, an R package to process data from ActiGraph output
