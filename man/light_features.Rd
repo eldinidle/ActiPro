@@ -15,3 +15,6 @@ A data.table containing a set of novel statistical parameters based on Keadle
 \description{
 Produce novel light activity features
 }
+\examples{
+
+}

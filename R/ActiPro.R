@@ -10,12 +10,112 @@
 #' @import eeptools
 #' @import reldist
 
+# JZ Commit
+#    ActiPro, an R package to process data from ActiGraph output
+#    Copyright (C) 2018 Eldin Dzubur, PhD
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+
+#below code is just telling R to label the columns based on what mode the accelerometer data is in.
+actigraph_mode_columns <- function(mode_integer) {
+  mode_switch <- switch(mode_integer,
+                        c("Activity"),
+                        c("Activity", "Steps"),
+                        c("Activity", "HR"),
+                        c("Activity", "Steps", "HR"),
+                        c("Activity", "Axis 2"),
+                        c("Activity", "Axis 2", "Steps"),
+                        c("Activity", "Axis 2", "HR"),
+                        c("Activity", "Axis 2", "Steps", "HR"),
+                        NA,
+                        NA,
+                        NA,
+                        NA,
+                        # 8-11 not possible, can't suppress axis 2
+                        c("Activity", "Axis 2","Axis 3"),
+                        c("Activity", "Axis 2","Axis 3", "Steps"),
+                        c("Activity", "Axis 2","Axis 3", "HR"),
+                        c("Activity", "Axis 2","Axis 3", "Steps", "HR"),
+                        #
+                        c("Activity","Lux"),
+                        c("Activity", "Steps","Lux"),
+                        c("Activity", "HR","Lux"),
+                        c("Activity", "Steps", "HR","Lux"),
+                        c("Activity", "Axis 2","Lux"),
+                        c("Activity", "Axis 2", "Steps","Lux"),
+                        c("Activity", "Axis 2", "HR","Lux"),
+                        c("Activity", "Axis 2", "Steps", "HR","Lux"),
+                        NA,
+                        NA,
+                        NA,
+                        NA,
+                        # 24-27 not possible, can't suppress axis 2
+                        c("Activity", "Axis 2","Axis 3","Lux"),
+                        c("Activity", "Axis 2","Axis 3", "Steps","Lux"),
+                        c("Activity", "Axis 2","Axis 3", "HR","Lux"),
+                        c("Activity", "Axis 2","Axis 3", "Steps", "HR","Lux"),
+                        #
+                        c("Activity","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
+                        c("Activity", "Steps","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
+                        c("Activity", "HR","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
+                        c("Activity", "Steps", "HR","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
+                        c("Activity", "Axis 2","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
+                        c("Activity", "Axis 2", "Steps","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
+                        c("Activity", "Axis 2", "HR","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
+                        c("Activity", "Axis 2", "Steps", "HR","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
+                        NA,
+                        NA,
+                        NA,
+                        NA,
+                        # 40-43 not possible, can't suppress axis 2
+                        c("Activity", "Axis 2","Axis 3","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
+                        c("Activity", "Axis 2","Axis 3", "Steps","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
+                        c("Activity", "Axis 2","Axis 3", "HR","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
+                        c("Activity", "Axis 2","Axis 3", "Steps", "HR","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
+                        #
+                        c("Activity","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
+                        c("Activity", "Steps","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
+                        c("Activity", "HR","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
+                        c("Activity", "Steps", "HR","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
+                        c("Activity", "Axis 2","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
+                        c("Activity", "Axis 2", "Steps","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
+                        c("Activity", "Axis 2", "HR","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
+                        c("Activity", "Axis 2", "Steps", "HR","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
+                        NA,
+                        NA,
+                        NA,
+                        NA,
+                        # 56-59 not possible, can't suppress axis 2
+                        c("Activity", "Axis 2","Axis 3","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
+                        c("Activity", "Axis 2","Axis 3", "Steps","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
+                        c("Activity", "Axis 2","Axis 3", "HR","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
+                        c("Activity", "Axis 2","Axis 3", "Steps", "HR","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying")
+  )
+  return(mode_switch)
+}
+
+
 #' Produce novel sedentary features
+#' @name sedentary_feature
 #'
 #' @param acc_ageadjusted the file created by ActiPro
 #'
 #' @return A data.table containing a set of novel statistical parameters based on Keadle
 #'
+#' @examples
 #'
 #' @export
 sedentary_features <- function(acc_ageadjusted) {
@@ -200,10 +300,13 @@ sedentary_features <- function(acc_ageadjusted) {
 
 #' Produce novel ancillary activity features
 #'
+#' @name ancillary_features
+#'
 #' @param acc_ageadjusted the file created by ActiPro
 #'
 #' @return A data.table containing a set of novel statistical parameters based on Keadle
 #'
+#' @examples
 #'
 #' @export
 ancillary_features <- function(acc_ageadjusted) {
@@ -253,10 +356,13 @@ ancillary_features <- function(acc_ageadjusted) {
 
 #' Produce novel light activity features
 #'
+#' @name light_features
+#'
 #' @param acc_ageadjusted the file created by ActiPro
 #'
 #' @return A data.table containing a set of novel statistical parameters based on Keadle
 #'
+#' @examples
 #'
 #' @export
 light_features <- function(acc_ageadjusted) {
@@ -422,6 +528,8 @@ light_features <- function(acc_ageadjusted) {
 
 #' Produce novel MVPA features
 #'
+#' @name mvpa_features
+#'
 #' @param acc_ageadjusted the file created by ActiPro
 #'
 #' @return A data.table containing a set of novel statistical parameters based on Keadle
@@ -489,9 +597,9 @@ mvpa_features <- function(acc_ageadjusted) {
                                    & non_mvpa == 1),1
                                   ,true_mvpa)]
   minute_acc[, mvpa_new_break := as.integer(!mvpa_new)]
-  minute_acc[, mvpa_new_length := bout_sequence(mvpa_new, mvpa_new_break, epoch)]
+  minute_acc[, mvpa_new_length := bout_sequence(mvpa_new, mvpa_new_break, "60")]
   minute_acc[, mvpa_new_length := mvpa_new_length/60L]
-  minute_acc[, mvpa_new_index := bout_sequence(mvpa_new, mvpa_new_break, epoch, return_index = TRUE)]
+  minute_acc[, mvpa_new_index := bout_sequence(mvpa_new, mvpa_new_break, "60", return_index = TRUE)]
   minute_acc[, mvpa_guideline_bout := as.integer(mvpa_new_length >= 10 & mvpa_new == 1)]
   minute_acc[, mvpa_sporadic_bout := as.integer(mvpa_bout_length < 10 & mvpa_guideline_bout == 0 & true_mvpa == 1)]
 
@@ -660,102 +768,6 @@ mvpa_features <- function(acc_ageadjusted) {
   return(return_mvpa)
 
   }
-
-# JZ Commit
-#    ActiPro, an R package to process data from ActiGraph output
-#    Copyright (C) 2018 Eldin Dzubur, PhD
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License as published by
-#   the Free Software Foundation, either version 3 of the License, or
-#    (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-
-#below code is just telling R to label the columns based on what mode the accelerometer data is in.
-actigraph_mode_columns <- function(mode_integer) {
-  mode_switch <- switch(mode_integer,
-                 c("Activity"),
-                 c("Activity", "Steps"),
-                 c("Activity", "HR"),
-                 c("Activity", "Steps", "HR"),
-                 c("Activity", "Axis 2"),
-                 c("Activity", "Axis 2", "Steps"),
-                 c("Activity", "Axis 2", "HR"),
-                 c("Activity", "Axis 2", "Steps", "HR"),
-                 NA,
-                 NA,
-                 NA,
-                 NA,
-                 # 8-11 not possible, can't suppress axis 2
-                 c("Activity", "Axis 2","Axis 3"),
-                 c("Activity", "Axis 2","Axis 3", "Steps"),
-                 c("Activity", "Axis 2","Axis 3", "HR"),
-                 c("Activity", "Axis 2","Axis 3", "Steps", "HR"),
-                 #
-                 c("Activity","Lux"),
-                 c("Activity", "Steps","Lux"),
-                 c("Activity", "HR","Lux"),
-                 c("Activity", "Steps", "HR","Lux"),
-                 c("Activity", "Axis 2","Lux"),
-                 c("Activity", "Axis 2", "Steps","Lux"),
-                 c("Activity", "Axis 2", "HR","Lux"),
-                 c("Activity", "Axis 2", "Steps", "HR","Lux"),
-                 NA,
-                 NA,
-                 NA,
-                 NA,
-                 # 24-27 not possible, can't suppress axis 2
-                 c("Activity", "Axis 2","Axis 3","Lux"),
-                 c("Activity", "Axis 2","Axis 3", "Steps","Lux"),
-                 c("Activity", "Axis 2","Axis 3", "HR","Lux"),
-                 c("Activity", "Axis 2","Axis 3", "Steps", "HR","Lux"),
-                 #
-                 c("Activity","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
-                 c("Activity", "Steps","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
-                 c("Activity", "HR","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
-                 c("Activity", "Steps", "HR","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
-                 c("Activity", "Axis 2","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
-                 c("Activity", "Axis 2", "Steps","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
-                 c("Activity", "Axis 2", "HR","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
-                 c("Activity", "Axis 2", "Steps", "HR","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
-                 NA,
-                 NA,
-                 NA,
-                 NA,
-                 # 40-43 not possible, can't suppress axis 2
-                 c("Activity", "Axis 2","Axis 3","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
-                 c("Activity", "Axis 2","Axis 3", "Steps","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
-                 c("Activity", "Axis 2","Axis 3", "HR","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
-                 c("Activity", "Axis 2","Axis 3", "Steps", "HR","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
-                 #
-                 c("Activity","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
-                 c("Activity", "Steps","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
-                 c("Activity", "HR","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
-                 c("Activity", "Steps", "HR","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
-                 c("Activity", "Axis 2","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
-                 c("Activity", "Axis 2", "Steps","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
-                 c("Activity", "Axis 2", "HR","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
-                 c("Activity", "Axis 2", "Steps", "HR","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
-                 NA,
-                 NA,
-                 NA,
-                 NA,
-                 # 56-59 not possible, can't suppress axis 2
-                 c("Activity", "Axis 2","Axis 3","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
-                 c("Activity", "Axis 2","Axis 3", "Steps","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
-                 c("Activity", "Axis 2","Axis 3", "HR","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying"),
-                 c("Activity", "Axis 2","Axis 3", "Steps", "HR","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying")
-  )
-  return(mode_switch)
-}
 
 bout_sequence <- function(acc_stream, break_stream, epoch, return_index = FALSE){ #, min_bout_length
   acc_raw <- data.table("acc_stream" = as.integer(acc_stream), "break_stream" = as.integer(break_stream))
