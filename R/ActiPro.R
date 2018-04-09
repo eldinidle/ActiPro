@@ -501,7 +501,7 @@ light_features <- function(acc_ageadjusted) {
                          by = list(id, fulldate)]
 
   # Using reldist and gini
-  light_gini <- day_bouts[, list(sed_gini = gini(light_event_length)), by = list(id,fulldate)]
+  light_gini <- day_bouts[, list(light_gini = gini(light_event_length)), by = list(id,fulldate)]
 
 
   sed_features <- list(light_total,
