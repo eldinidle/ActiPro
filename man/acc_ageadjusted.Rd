@@ -5,7 +5,7 @@
 \title{Produce an activity dataset from raw data}
 \usage{
 acc_ageadjusted(folder_location, age_data_file, nhanes_nonwear = TRUE,
-  id_length = 7, dataTable = FALSE, metaData = TRUE)
+  id_length = 7, agdFile = FALSE, dataTable = FALSE, metaData = TRUE)
 }
 \arguments{
 \item{folder_location}{location of \strong(.csv) files}
@@ -15,6 +15,8 @@ acc_ageadjusted(folder_location, age_data_file, nhanes_nonwear = TRUE,
 \item{nhanes_nonwear}{= TRUE, use NHANES non-wear thresholds}
 
 \item{id_length}{= 7, length of \strong(id) variable in \strong(age_data_file)}
+
+\item{agdFile}{= FALSE, agd file, not csv, if TRUE, overrides \strong(dataTable) and \strong(metaData) settings}
 
 \item{dataTable}{= FALSE, datatable format, post-processed with ActiLife}
 
