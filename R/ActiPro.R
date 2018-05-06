@@ -124,14 +124,15 @@ reach_adapter <- function(rds_filepath){
   reach_data[, id := paste(id,"w",wave,sep="")]
   reach_data[, wave := NULL]
   reach_data[, did := NULL]
-  reach_data[, person := NULL]
-  reach_data[, startdatetime := NULL]
-  reach_data[, stopdatetime := NULL]
-  reach_data[, wear := !nonwear & !flag_cut]
-  adapter_names <- c("id","age","epoch","fulltime","Activity", "Axis 2","Axis 3",
-                     "Steps","Lux","Incline Off","Incline Standing",
-                     "Incline Sitting", "Incline Lying","pa","ext",
-                     "nonwear","cut","wear")
+  reach_data[, timestamp_lcl := NULL]
+  #reach_data[, person := NULL]
+  #reach_data[, startdatetime := NULL]
+  #reach_data[, stopdatetime := NULL]
+  reach_data[, wear := !flag_nonwear & !flag_cut]
+  adapter_names <- c("id","epoch","age","fulltime","Activity", "Axis 2","Axis 3",
+                     "Steps","pa","Incline Off","Incline Standing",
+                     "Incline Sitting", "Incline Lying","Lux","nonwear",
+                     "cut","ext","wear")
   setnames(reach_data,adapter_names)
   reach_data[, HR := NA]
   reach_data[, fulldate := as.Date(fulltime, origin = "1970-01-01", tz = "UTC")]
