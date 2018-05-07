@@ -136,11 +136,14 @@ reach_adapter <- function(rds_filepath){
   setnames(reach_data,adapter_names)
   reach_data[, HR := NA]
   reach_data[, fulldate := as.Date(fulltime, origin = "1970-01-01", tz = "America/Los_Angeles")]
-  valid_days <- reach_data[,list(time = sum(wear, na.rm = TRUE), epoch = mean(epoch, na.rm = TRUE)), by = list(id,fulldate)]
-  valid_days[, valid_day := ifelse(epoch == 30,as.integer(time > 1200),
-                                   ifelse(epoch == 60,as.integer(time > 600),
-                                          ifelse(epoch == 10,as.integer(time > 200),
-                                          NA)))]
+  valid_days <- reach_data[cut == 0 & ext == 0,list(time = sum(wear, na.rm = TRUE), epoch = mean(epoch, na.rm = TRUE)), by = list(id,fulldate)]
+  all_days <- reach_data[,.(dummy = 1),by = .(id,fulldate)][,dummy := NULL]
+  valid_days <- merge(all_days,valid_days, by = c("id","fulldate"), all = TRUE)
+  valid_days[is.na(epoch),epoch := 0]
+  valid_days[, valid_day := ifelse(epoch == 30,as.integer(time >= 1200),
+                                   ifelse(epoch == 60,as.integer(time >= 600),
+                                          ifelse(epoch == 10,as.integer(time >= 3600),
+                                          0)))]
   valid_days[, valid_day_sum := sum(valid_day), by = id]
   valid_days[, epoch := NULL]
   valid_days[, time := NULL]
