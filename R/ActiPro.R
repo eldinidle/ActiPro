@@ -128,12 +128,13 @@ reach_adapter <- function(rds_filepath){
   #reach_data[, person := NULL]
   #reach_data[, startdatetime := NULL]
   #reach_data[, stopdatetime := NULL]
-  reach_data[, wear := !flag_nonwear & !flag_cut]
+  reach_data[, wear := !flag_nonwear & !flag_cut & !flag_ext]
   adapter_names <- c("id","epoch","age","fulltime","Activity", "Axis 2","Axis 3",
                      "Steps","pa","Incline Off","Incline Standing",
                      "Incline Sitting", "Incline Lying","Lux","nonwear",
                      "cut","ext","wear")
   setnames(reach_data,adapter_names)
+  reach_data[, nonwear := !wear]
   reach_data[, HR := NA]
   reach_data[, fulldate := as.Date(fulltime, origin = "1970-01-01", tz = "America/Los_Angeles")]
   valid_days <- reach_data[cut == 0 & ext == 0,list(time = sum(wear, na.rm = TRUE), epoch = mean(epoch, na.rm = TRUE)), by = list(id,fulldate)]
@@ -148,10 +149,10 @@ reach_adapter <- function(rds_filepath){
   valid_days[, epoch := NULL]
   valid_days[, time := NULL]
   acc <- merge(x = reach_data, y= valid_days, by = c("id","fulldate") , all.x = TRUE)
-  acc[, light := as.integer(pa == "lig" & wear == TRUE)]
-  acc[, mod := as.integer(pa == "mod" & wear == TRUE)]
-  acc[, vig := as.integer(pa == "vig" & wear == TRUE)]
-  acc[, sed := as.integer(pa == "sed" & wear == TRUE)]
+  acc[, light := as.integer(pa == "lig" & wear & !ext & !cut)]
+  acc[, mod := as.integer(pa == "mod" & wear & !ext & !cut)]
+  acc[, vig := as.integer(pa == "vig" & wear & !ext & !cut)]
+  acc[, sed := as.integer(pa == "sed" & wear & !ext & !cut)]
   acc[, ext := as.integer(ext)]
   acc[, cut := as.integer(cut)]
   acc[, divider := 60L/epoch]
