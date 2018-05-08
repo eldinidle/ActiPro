@@ -124,30 +124,35 @@ reach_adapter <- function(rds_filepath){
   reach_data[, id := paste(id,"w",wave,sep="")]
   reach_data[, wave := NULL]
   reach_data[, did := NULL]
-  reach_data[, person := NULL]
-  reach_data[, startdatetime := NULL]
-  reach_data[, stopdatetime := NULL]
-  reach_data[, wear := !nonwear & !flag_cut]
-  adapter_names <- c("id","age","epoch","fulltime","Activity", "Axis 2","Axis 3",
-                     "Steps","Lux","Incline Off","Incline Standing",
-                     "Incline Sitting", "Incline Lying","pa","ext",
-                     "nonwear","cut","wear")
+  reach_data[, timestamp := NULL]
+  #reach_data[, person := NULL]
+  #reach_data[, startdatetime := NULL]
+  #reach_data[, stopdatetime := NULL]
+  reach_data[, wear := !flag_nonwear & !flag_cut & !flag_ext]
+  adapter_names <- c("id","epoch","age","fulltime","Activity", "Axis 2","Axis 3",
+                     "Steps","pa","Incline Off","Incline Standing",
+                     "Incline Sitting", "Incline Lying","Lux","nonwear",
+                     "cut","ext","wear")
   setnames(reach_data,adapter_names)
+  reach_data[, nonwear := !wear]
   reach_data[, HR := NA]
-  reach_data[, fulldate := as.Date(fulltime, origin = "1970-01-01", tz = "UTC")]
-  valid_days <- reach_data[,list(time = sum(wear, na.rm = TRUE), epoch = mean(epoch, na.rm = TRUE)), by = list(id,fulldate)]
-  valid_days[, valid_day := ifelse(epoch == 30,as.integer(time > 1200),
-                                   ifelse(epoch == 60,as.integer(time > 600),
-                                          ifelse(epoch == 10,as.integer(time > 200),
-                                          NA)))]
+  reach_data[, fulldate := as.Date(fulltime, origin = "1970-01-01", tz = "America/Los_Angeles")]
+  valid_days <- reach_data[cut == 0 & ext == 0,list(time = sum(wear, na.rm = TRUE), epoch = mean(epoch, na.rm = TRUE)), by = list(id,fulldate)]
+  all_days <- reach_data[,.(dummy = 1),by = .(id,fulldate)][,dummy := NULL]
+  valid_days <- merge(all_days,valid_days, by = c("id","fulldate"), all = TRUE)
+  valid_days[is.na(epoch),epoch := 0]
+  valid_days[, valid_day := ifelse(epoch == 30,as.integer(time >= 1200),
+                                   ifelse(epoch == 60,as.integer(time >= 600),
+                                          ifelse(epoch == 10,as.integer(time >= 3600),
+                                          0)))]
   valid_days[, valid_day_sum := sum(valid_day), by = id]
   valid_days[, epoch := NULL]
   valid_days[, time := NULL]
   acc <- merge(x = reach_data, y= valid_days, by = c("id","fulldate") , all.x = TRUE)
-  acc[, light := as.integer(pa == "lig" & wear == TRUE)]
-  acc[, mod := as.integer(pa == "mod" & wear == TRUE)]
-  acc[, vig := as.integer(pa == "vig" & wear == TRUE)]
-  acc[, sed := as.integer(pa == "sed" & wear == TRUE)]
+  acc[, light := as.integer(pa == "lig" & wear & !ext & !cut)]
+  acc[, mod := as.integer(pa == "mod" & wear & !ext & !cut)]
+  acc[, vig := as.integer(pa == "vig" & wear & !ext & !cut)]
+  acc[, sed := as.integer(pa == "sed" & wear & !ext & !cut)]
   acc[, ext := as.integer(ext)]
   acc[, cut := as.integer(cut)]
   acc[, divider := 60L/epoch]
@@ -952,13 +957,13 @@ actigraph_raw <- function(file_location, dataTable = FALSE, metaData = TRUE) {
   if(metaData){
     if(dataTable){
       dtStart <- paste(fread(file_location, skip=10, nrows = 1, header = T)$Date,fread(file_location, skip=10, nrows = 1, header = T)$Time)
-      raw[1,fulltime := as.POSIXct(dtStart,format=paste("%",format[1,1],"/%",format[2,1],"/%",format[3,1]," %H:%M:%S", sep=""), tz = "UTC")]
+      raw[1,fulltime := as.POSIXct(dtStart,format=paste("%",format[1,1],"/%",format[2,1],"/%",format[3,1]," %H:%M:%S", sep=""), tz = "America/Los_Angeles")]
     } else {
-      raw[1,fulltime := as.POSIXct(start,format=paste("%",format[1,1],"/%",format[2,1],"/%",format[3,1]," %H:%M:%S", sep=""), tz = "UTC")]
+      raw[1,fulltime := as.POSIXct(start,format=paste("%",format[1,1],"/%",format[2,1],"/%",format[3,1]," %H:%M:%S", sep=""), tz = "America/Los_Angeles")]
     }
   } else {
     start <- paste(fread(file_location, nrows = 1, header = T)$Date,fread(file_location, nrows = 1, header = T)$Time)
-    raw[1,fulltime := as.POSIXct(start,format=paste("%",format[1,1],"/%",format[2,1],"/%",format[3,1]," %H:%M:%S", sep=""), tz = "UTC")]
+    raw[1,fulltime := as.POSIXct(start,format=paste("%",format[1,1],"/%",format[2,1],"/%",format[3,1]," %H:%M:%S", sep=""), tz = "America/Los_Angeles")]
   }
 
   if(metaData){
@@ -970,11 +975,11 @@ actigraph_raw <- function(file_location, dataTable = FALSE, metaData = TRUE) {
     epoch <- (epoch_hour*60*60)+(epoch_minute*60)+epoch_second
   } else {
     dtNext <- paste(fread(file_location, nrows = 2, header = T)$Date[2],fread(file_location, nrows = 2, header = T)$Time[2])
-    raw[2, fulltime := as.POSIXct(dtNext,format=paste("%",format[1,1],"/%",format[2,1],"/%",format[3,1]," %H:%M:%S", sep=""), tz = "UTC")]
+    raw[2, fulltime := as.POSIXct(dtNext,format=paste("%",format[1,1],"/%",format[2,1],"/%",format[3,1]," %H:%M:%S", sep=""), tz = "America/Los_Angeles")]
     epoch <- raw$fulltime[2]-raw$fulltime[1]
   }
 
-  start_time <- as.POSIXct(start,format=paste("%",format[1,1],"/%",format[2,1],"/%",format[3,1]," %H:%M:%S", sep=""), tz = "UTC")
+  start_time <- as.POSIXct(start,format=paste("%",format[1,1],"/%",format[2,1],"/%",format[3,1]," %H:%M:%S", sep=""), tz = "America/Los_Angeles")
   raw[, fulltime := start_time+epoch*(.I-1)]
 
   if(metaData){
@@ -993,7 +998,7 @@ acc_nonwear_agd <- function(file_location, nhanes = TRUE){
   agd <- dbConnect(SQLite(), file_location)
   acc_raw <- as.data.table(dbReadTable(agd,"data"))
   settings <- as.data.table(dbReadTable(agd,"settings"))
-  acc_raw$fulltime <- as.POSIXct(acc_raw$dataTimestamp/(10000000),origin = "0001-01-01 00:00:00", tz = "UTC")
+  acc_raw$fulltime <- as.POSIXct(acc_raw$dataTimestamp/(10000000),origin = "0001-01-01 00:00:00", tz = "America/Los_Angeles")
   acc_raw[,1:=NULL]
   mode_integer <- as.integer(settings[settingName == "modenumber", settingValue])
   rows <- actigraph_mode_columns(mode_integer+1)
@@ -1031,7 +1036,7 @@ acc_nonwear_agd <- function(file_location, nhanes = TRUE){
                "non_wear_new_break","non_wear_length_new") := NULL]
   acc_raw[, wear := as.integer(!nonwear)]
 
-  acc_raw[, fulldate := as.Date(as.character(as.POSIXct(fulltime, origin = "1970-01-01", tz = "UTC")))]
+  acc_raw[, fulldate := as.Date(as.character(as.POSIXct(fulltime, origin = "1970-01-01", tz = "America/Los_Angeles")))]
   valid_days <- data.table(ddply(acc_raw,~fulldate,summarise,time=sum(wear)))
   if(epoch == 30){
     valid_days[, valid_day := as.integer(time > 1200)]
@@ -1094,7 +1099,7 @@ acc_nonwear <- function(file_location, nhanes = TRUE, dataTable = FALSE, metaDat
                "non_wear_new_break","non_wear_length_new") := NULL]
   acc_raw[, wear := as.integer(!nonwear)]
 
-  acc_raw[, fulldate := as.Date(as.character(as.POSIXct(fulltime, origin = "1970-01-01", tz = "UTC")))]
+  acc_raw[, fulldate := as.Date(as.character(as.POSIXct(fulltime, origin = "1970-01-01", tz = "America/Los_Angeles")))]
   valid_days <- data.table(ddply(acc_raw,~fulldate,summarise,time=sum(wear)))
   if(epoch == 30){
     valid_days[, valid_day := as.integer(time > 1200)]
@@ -1181,7 +1186,7 @@ acc_ageadjusted <- function(folder_location, age_data_file, nhanes_nonwear = TRU
   acc_full[, id := tolower(substr(file_id,1,id_length))]
 
   acc_full_age <- process_age(age_data_file, acc_full)
-  acc_full_age[, string_time := as.character(as.POSIXct(fulltime, origin = "1970-01-01", tz = "UTC"))]
+  acc_full_age[, string_time := as.character(as.POSIXct(fulltime, origin = "1970-01-01", tz = "America/Los_Angeles"))]
 
 
   stopCluster(cl)
@@ -1195,7 +1200,7 @@ process_age <- function(age_data_file, acc_full){
     colnames(age_data) <- c("id","dob")
     temp_age <- acc_full[, .SD[1], id][,.(id,fulldate)]
     age_data <- merge(x = temp_age, y = age_data, by = "id", all = FALSE)
-    age_data[, agedate := as.Date(as.character(as.POSIXct(dob, origin = "1970-01-01", tz = "UTC")))]
+    age_data[, agedate := as.Date(as.character(as.POSIXct(dob, origin = "1970-01-01", tz = "America/Los_Angeles")))]
     age_data[, age := age_calc(agedate, enddate=fulldate,units = "years")]
     age_data <- age_data[,.(id,age)]
   } else {
@@ -1310,7 +1315,7 @@ ema_acc <- function(ema_file, activity_data,
   ema_stubs <- fread(ema_file, colClasses = c("character","character","integer"),
                      col.names = c("ID","FULLTIME","ACC_STABLE_STUB"))
   ema_stubs[, ID := tolower(ID)]
-  ema_stubs[, time := as.POSIXct(FULLTIME,format="%Y-%m-%d %H:%M:%S",origin="1970-01-01", tz = "UTC")]
+  ema_stubs[, time := as.POSIXct(FULLTIME,format="%Y-%m-%d %H:%M:%S",origin="1970-01-01", tz = "America/Los_Angeles")]
 
   keycols <- c("ID","time")
   setorderv(ema_stubs,keycols)
@@ -1442,7 +1447,7 @@ ema_acc_fast <- function(ema_file, activity_data,
   ema_stubs <- fread(ema_file, colClasses = c("character","character","integer"),
                      col.names = c("ID","FULLTIME","ACC_STABLE_STUB"))
   ema_stubs[, ID := tolower(ID)]
-  ema_stubs[, time := as.POSIXct(FULLTIME,format="%Y-%m-%d %H:%M:%S",origin="1970-01-01", tz = "UTC")]
+  ema_stubs[, time := as.POSIXct(FULLTIME,format="%Y-%m-%d %H:%M:%S",origin="1970-01-01", tz = "America/Los_Angeles")]
 
   keycols <- c("ID","time")
   setorderv(ema_stubs,keycols)
@@ -1486,8 +1491,8 @@ ema_acc_fast <- function(ema_file, activity_data,
 
   for (ts in time_stubs) {
     ema_stubs2[, expand_times := (as.integer(ts)*2L)]
-    ema_stubs2[, low_time := as.POSIXct(round(time - as.integer(ts)*60L,"min"), tz = "UTC")]
-    ema_stubs2[, high_time := as.POSIXct(round(time,"min"), tz = "UTC")]
+    ema_stubs2[, low_time := as.POSIXct(round(time - as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
+    ema_stubs2[, high_time := as.POSIXct(round(time,"min"), tz = "America/Los_Angeles")]
     expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]][,
                                                                      fulltime := seq(low_time , high_time, by = '30 sec'),
                                                                      by = .(low_time, high_time)][]
@@ -1509,8 +1514,8 @@ ema_acc_fast <- function(ema_file, activity_data,
 
   for (ts in time_stubs) {
     ema_stubs2[, expand_times := (as.integer(ts)*2L)]
-    ema_stubs2[, low_time := as.POSIXct(round(time,"min"), tz = "UTC")]
-    ema_stubs2[, high_time := as.POSIXct(round(time + as.integer(ts)*60L,"min"), tz = "UTC")]
+    ema_stubs2[, low_time := as.POSIXct(round(time,"min"), tz = "America/Los_Angeles")]
+    ema_stubs2[, high_time := as.POSIXct(round(time + as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
     expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]][,
                                                                      fulltime := seq(low_time , high_time, by = '30 sec'),
                                                                      by = .(low_time, high_time)][]
@@ -1532,8 +1537,8 @@ ema_acc_fast <- function(ema_file, activity_data,
 
   for (ts in time_stubs) {
     ema_stubs2[, expand_times := (as.integer(ts)*4L)]
-    ema_stubs2[, low_time := as.POSIXct(round(time - as.integer(ts)*60L,"min"), tz = "UTC")]
-    ema_stubs2[, high_time := as.POSIXct(round(time + as.integer(ts)*60L,"min"), tz = "UTC")]
+    ema_stubs2[, low_time := as.POSIXct(round(time - as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
+    ema_stubs2[, high_time := as.POSIXct(round(time + as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
     expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]][,
                                                                      fulltime := seq(low_time , high_time, by = '30 sec'),
                                                                      by = .(low_time, high_time)][]
