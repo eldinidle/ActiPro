@@ -1,0 +1,63 @@
+PackratFormat: 1.4
+PackratVersion: 0.4.9.3
+RVersion: 3.5.0
+Repos: CRAN=https://cran.rstudio.com/
+
+Package: R6
+Source: CRAN
+Version: 2.2.2
+
+Package: Rcpp
+Source: CRAN
+Version: 0.12.17
+
+Package: assertthat
+Source: CRAN
+Version: 0.2.0
+
+Package: codetools
+Source: CRAN
+Version: 0.2-15
+Hash: a4268e48f71dc70ac2203aced7cdd8ea
+
+Package: data.table
+Source: CRAN
+Version: 1.11.4
+
+Package: doParallel
+Source: CRAN
+Version: 1.0.11
+Requires: foreach, iterators
+
+Package: foreach
+Source: CRAN
+Version: 1.4.4
+Requires: codetools, iterators
+
+Package: iterators
+Source: CRAN
+Version: 1.0.9
+
+Package: magrittr
+Source: CRAN
+Version: 1.5
+
+Package: packrat
+Source: CRAN
+Version: 0.4.9-3
+Hash: 03fb817297975f1da0d1b774b47620b3
+
+Package: plyr
+Source: CRAN
+Version: 1.8.4
+Requires: Rcpp
+
+Package: prettyunits
+Source: CRAN
+Version: 1.0.2
+Requires: assertthat, magrittr
+
+Package: progress
+Source: CRAN
+Version: 1.1.2
+Requires: R6, prettyunits
