@@ -169,8 +169,14 @@ reach_adapter <- function(rds_filepath){
 #' @examples
 #'
 #' @export
-sedentary_features <- function(acc_ageadjusted) {
+sedentary_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE) {
   # Standardizing to minute epochs for relevant variables (sed)
+  if(!cut){
+    acc_ageadjusted[,cut := 0]
+  }
+  if(!ext){
+    acc_ageadjusted[,ext := 0]
+  }
   epoch_acc <- acc_ageadjusted[valid_day == 1,
                                list(id,fulldate,sed,fulltime,wear,age,divider,ext,cut)]
   epoch_acc[, hour := as.POSIXlt(fulltime)$hour]
@@ -362,8 +368,14 @@ sedentary_features <- function(acc_ageadjusted) {
 #' @examples
 #'
 #' @export
-ancillary_features <- function(acc_ageadjusted) {
+ancillary_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE) {
   # Standardizing to minute epochs for relevant variables (Activity,Steps)
+  if(!cut){
+    acc_ageadjusted[,cut := 0]
+  }
+  if(!ext){
+    acc_ageadjusted[,ext := 0]
+  }
   epoch_acc <- acc_ageadjusted[valid_day == 1,
                                list(id,fulldate,Activity,Steps,fulltime,wear,age,divider,ext,cut)]
   epoch_acc[, hour := as.POSIXlt(fulltime)$hour]
@@ -403,9 +415,16 @@ ancillary_features <- function(acc_ageadjusted) {
   # Compute anc_step_percent
   anc_step_percent <- day_acc[, list(id,fulldate,anc_step_percent = day_step_time/day_wear)]
 
+  # Extract daily wear
+  anc_wear <- day_acc[, list(id, fulldate,anc_wear = day_wear)]
+
   # Merge anc* variables
-  merge_anc <- merge(anc_met_hrs,anc_step_daily, by = c("id","fulldate"), all = TRUE)
-  return_anc <- merge(merge_anc,anc_step_percent, by = c("id","fulldate"), all = TRUE)
+  anc_features <- list(anc_met_hrs,
+                       anc_step_daily,
+                       anc_step_percent,
+                       anc_wear)
+
+  return_anc <- Reduce(function(...) merge(..., by = c("id","fulldate"), all = T), anc_features)
 
   return(return_anc)
 }
@@ -421,8 +440,14 @@ ancillary_features <- function(acc_ageadjusted) {
 #' @examples
 #'
 #' @export
-light_features <- function(acc_ageadjusted) {
+light_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE) {
   # Standardizing to minute epochs for relevant variables (sed)
+  if(!cut){
+    acc_ageadjusted[,cut := 0]
+  }
+  if(!ext){
+    acc_ageadjusted[,ext := 0]
+  }
   epoch_acc <- acc_ageadjusted[valid_day == 1,
                                list(id,fulldate,light,fulltime,wear,age,divider,ext,cut)]
   epoch_acc[, hour := as.POSIXlt(fulltime)$hour]
@@ -594,8 +619,14 @@ light_features <- function(acc_ageadjusted) {
 #'
 #'
 #' @export
-mvpa_features <- function(acc_ageadjusted) {
+mvpa_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE) {
   # Standardizing to minute epochs for relevant variables (mvpa and Activity)
+  if(!cut){
+    acc_ageadjusted[,cut := 0]
+  }
+  if(!ext){
+    acc_ageadjusted[,ext := 0]
+  }
   epoch_acc <- acc_ageadjusted[valid_day == 1,
                                list(id,fulldate,Activity,
                                     mvpa = as.integer(mod == 1 | vig == 1),

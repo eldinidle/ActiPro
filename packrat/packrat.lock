@@ -165,6 +165,12 @@ Version: 0.10.1
 Hash: 54d95f4ec6d0300100413ed0127d89ae
 Requires: stringr
 
+Package: forcats
+Source: CRAN
+Version: 0.3.0
+Hash: 770f3834b97a2c429bdecb7a5f27eb25
+Requires: magrittr, rlang, tibble
+
 Package: foreach
 Source: CRAN
 Version: 1.4.4
@@ -193,10 +199,22 @@ Source: CRAN
 Version: 0.2.0
 Hash: cd78381a9d3fea966ac39bd0daaf5554
 
+Package: haven
+Source: CRAN
+Version: 1.1.1
+Hash: 7179c7908e1ddadbc48ef7620b88126e
+Requires: Rcpp, forcats, hms, readr, tibble
+
 Package: highr
 Source: CRAN
 Version: 0.6
 Hash: aa3d5b7912b5fed4b546ed5cd2a1760b
+
+Package: hms
+Source: CRAN
+Version: 0.4.2
+Hash: b4096a4f6a6736138e9a825c2baaacf0
+Requires: pkgconfig, rlang
 
 Package: htmlTable
 Source: CRAN
@@ -344,6 +362,12 @@ Source: CRAN
 Version: 1.1.2
 Hash: ceef88c244d792a874bdacf72b6a30da
 Requires: R6, prettyunits
+
+Package: readr
+Source: CRAN
+Version: 1.1.1
+Hash: ca6ad2638b5295fdb97e6bdcfd0f8568
+Requires: BH, R6, Rcpp, hms, tibble
 
 Package: reldist
 Source: CRAN
