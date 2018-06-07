@@ -1449,6 +1449,8 @@ ema_acc_fast <- function(ema_file, activity_data,
   ema_stubs[, ID := tolower(ID)]
   ema_stubs[, time := as.POSIXct(FULLTIME,format="%Y-%m-%d %H:%M:%S",origin="1970-01-01", tz = "America/Los_Angeles")]
 
+  expand_sec <- paste(as.character(min(activity_data$epoch, na.rm = TRUE)),"sec")
+
   keycols <- c("ID","time")
   setorderv(ema_stubs,keycols)
   setkeyv(ema_stubs,keycols)
@@ -1494,7 +1496,7 @@ ema_acc_fast <- function(ema_file, activity_data,
     ema_stubs2[, low_time := as.POSIXct(round(time - as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
     ema_stubs2[, high_time := as.POSIXct(round(time,"min"), tz = "America/Los_Angeles")]
     expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]][,
-                                                                     fulltime := seq(low_time , high_time, by = '30 sec'),
+                                                                     fulltime := seq(low_time , high_time, by = expand_sec),
                                                                      by = .(low_time, high_time)][]
     expand[, id := ID]
     for (type in activity_types){
@@ -1505,7 +1507,7 @@ ema_acc_fast <- function(ema_file, activity_data,
       act_var <- paste("i.",type_var(type),sep="")
       expand[activity_data2, on = c('id','fulltime'), return_var := as.integer(get(act_var))]
       expand[activity_data2, on = c('id','fulltime'), divide_var := as.integer(i.divider)]
-      return <- expand[, .(add_var = sum(return_var/divide_var)), by=.(ID, ACC_STABLE_STUB)]
+      return <- expand[, .(add_var = sum(return_var/divide_var, na.rm = TRUE)), by=.(ID, ACC_STABLE_STUB)]
       #setnames(return,"add_var",eval(before))
       ema_stubs[return, on = c('ACC_STABLE_STUB'), eval(before) := i.add_var]
       ema_progress$tick()
@@ -1517,7 +1519,7 @@ ema_acc_fast <- function(ema_file, activity_data,
     ema_stubs2[, low_time := as.POSIXct(round(time,"min"), tz = "America/Los_Angeles")]
     ema_stubs2[, high_time := as.POSIXct(round(time + as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
     expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]][,
-                                                                     fulltime := seq(low_time , high_time, by = '30 sec'),
+                                                                     fulltime := seq(low_time , high_time, by = expand_sec),
                                                                      by = .(low_time, high_time)][]
     expand[, id := ID]
     for (type in activity_types){
@@ -1540,7 +1542,7 @@ ema_acc_fast <- function(ema_file, activity_data,
     ema_stubs2[, low_time := as.POSIXct(round(time - as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
     ema_stubs2[, high_time := as.POSIXct(round(time + as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
     expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]][,
-                                                                     fulltime := seq(low_time , high_time, by = '30 sec'),
+                                                                     fulltime := seq(low_time , high_time, by = expand_sec),
                                                                      by = .(low_time, high_time)][]
     expand[, id := ID]
     for (type in activity_types){
