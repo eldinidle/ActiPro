@@ -797,11 +797,11 @@ mvpa_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE) {
                                             list(length = mean(mvpa_bout_length, na.rm = TRUE)),
                                             by = list(id,fulldate,unique_mvpa_bout)]
   unique_mvpa_total_over_10[, uniques := 1]
-  unique_guide_total_over_10 <- minute_bouts[mvpa_new_length >= (2) & mvpa_guideline_bout == TRUE,
+  unique_guide_total_over_10 <- minute_bouts[mvpa_new_length >= (10) & mvpa_guideline_bout == TRUE,
                                              list(length = mean(mvpa_new_length, na.rm = TRUE)),
                                              by = list(id,fulldate,mvpa_new_index)]
   unique_guide_total_over_10[, uniques := 1]
-  unique_guide_total_over_20 <- minute_bouts[mvpa_new_length >= (5) & mvpa_guideline_bout == TRUE,
+  unique_guide_total_over_20 <- minute_bouts[mvpa_new_length >= (20) & mvpa_guideline_bout == TRUE,
                                              list(length = mean(mvpa_new_length, na.rm = TRUE)),
                                              by = list(id,fulldate,mvpa_new_index)]
   unique_guide_total_over_20[, uniques := 1]
@@ -860,7 +860,7 @@ mvpa_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE) {
 
 }
 
-bout_sequence <- function(acc_stream, break_stream, epoch, return_index = FALSE){ #, min_bout_length
+bout_sequence <- function(acc_stream, break_stream, epoch, return_index = FALSE, return_position = FALSE){ #, min_bout_length
   acc_raw <- data.table("acc_stream" = as.integer(acc_stream), "break_stream" = as.integer(break_stream))
   epoch <- as.integer(epoch)
   bins <- nrow(acc_raw)
@@ -887,9 +887,12 @@ bout_sequence <- function(acc_stream, break_stream, epoch, return_index = FALSE)
 
   acc_raw[, acc_var_length := rep(delta[,relength],delta[,rechange])]
   acc_raw[, index := rep(delta[,index_ref],delta[,rechange])]
+  acc_raw[, position := rep(delta[,reflag],delta[,rechange])]
 
   if(return_index){
     return(acc_raw[,index])
+  } else if (return_position){
+    return(acc_raw[,position])
   } else {
     return(acc_raw[,acc_var_length])
   }
