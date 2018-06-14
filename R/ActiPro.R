@@ -169,8 +169,14 @@ reach_adapter <- function(rds_filepath){
 #' @examples
 #'
 #' @export
-sedentary_features <- function(acc_ageadjusted) {
+sedentary_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE) {
   # Standardizing to minute epochs for relevant variables (sed)
+  if(!cut){
+    acc_ageadjusted[,cut := 0]
+  }
+  if(!ext){
+    acc_ageadjusted[,ext := 0]
+  }
   epoch_acc <- acc_ageadjusted[valid_day == 1,
                                list(id,fulldate,sed,fulltime,wear,age,divider,ext,cut)]
   epoch_acc[, hour := as.POSIXlt(fulltime)$hour]
@@ -362,8 +368,14 @@ sedentary_features <- function(acc_ageadjusted) {
 #' @examples
 #'
 #' @export
-ancillary_features <- function(acc_ageadjusted) {
+ancillary_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE) {
   # Standardizing to minute epochs for relevant variables (Activity,Steps)
+  if(!cut){
+    acc_ageadjusted[,cut := 0]
+  }
+  if(!ext){
+    acc_ageadjusted[,ext := 0]
+  }
   epoch_acc <- acc_ageadjusted[valid_day == 1,
                                list(id,fulldate,Activity,Steps,fulltime,wear,age,divider,ext,cut)]
   epoch_acc[, hour := as.POSIXlt(fulltime)$hour]
@@ -403,9 +415,16 @@ ancillary_features <- function(acc_ageadjusted) {
   # Compute anc_step_percent
   anc_step_percent <- day_acc[, list(id,fulldate,anc_step_percent = day_step_time/day_wear)]
 
+  # Extract daily wear
+  anc_wear <- day_acc[, list(id, fulldate,anc_wear = day_wear)]
+
   # Merge anc* variables
-  merge_anc <- merge(anc_met_hrs,anc_step_daily, by = c("id","fulldate"), all = TRUE)
-  return_anc <- merge(merge_anc,anc_step_percent, by = c("id","fulldate"), all = TRUE)
+  anc_features <- list(anc_met_hrs,
+                       anc_step_daily,
+                       anc_step_percent,
+                       anc_wear)
+
+  return_anc <- Reduce(function(...) merge(..., by = c("id","fulldate"), all = T), anc_features)
 
   return(return_anc)
 }
@@ -421,8 +440,14 @@ ancillary_features <- function(acc_ageadjusted) {
 #' @examples
 #'
 #' @export
-light_features <- function(acc_ageadjusted) {
+light_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE) {
   # Standardizing to minute epochs for relevant variables (sed)
+  if(!cut){
+    acc_ageadjusted[,cut := 0]
+  }
+  if(!ext){
+    acc_ageadjusted[,ext := 0]
+  }
   epoch_acc <- acc_ageadjusted[valid_day == 1,
                                list(id,fulldate,light,fulltime,wear,age,divider,ext,cut)]
   epoch_acc[, hour := as.POSIXlt(fulltime)$hour]
@@ -594,8 +619,14 @@ light_features <- function(acc_ageadjusted) {
 #'
 #'
 #' @export
-mvpa_features <- function(acc_ageadjusted) {
+mvpa_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE) {
   # Standardizing to minute epochs for relevant variables (mvpa and Activity)
+  if(!cut){
+    acc_ageadjusted[,cut := 0]
+  }
+  if(!ext){
+    acc_ageadjusted[,ext := 0]
+  }
   epoch_acc <- acc_ageadjusted[valid_day == 1,
                                list(id,fulldate,Activity,
                                     mvpa = as.integer(mod == 1 | vig == 1),
@@ -766,11 +797,11 @@ mvpa_features <- function(acc_ageadjusted) {
                                             list(length = mean(mvpa_bout_length, na.rm = TRUE)),
                                             by = list(id,fulldate,unique_mvpa_bout)]
   unique_mvpa_total_over_10[, uniques := 1]
-  unique_guide_total_over_10 <- minute_bouts[mvpa_new_length >= (2) & mvpa_guideline_bout == TRUE,
+  unique_guide_total_over_10 <- minute_bouts[mvpa_new_length >= (10) & mvpa_guideline_bout == TRUE,
                                              list(length = mean(mvpa_new_length, na.rm = TRUE)),
                                              by = list(id,fulldate,mvpa_new_index)]
   unique_guide_total_over_10[, uniques := 1]
-  unique_guide_total_over_20 <- minute_bouts[mvpa_new_length >= (5) & mvpa_guideline_bout == TRUE,
+  unique_guide_total_over_20 <- minute_bouts[mvpa_new_length >= (20) & mvpa_guideline_bout == TRUE,
                                              list(length = mean(mvpa_new_length, na.rm = TRUE)),
                                              by = list(id,fulldate,mvpa_new_index)]
   unique_guide_total_over_20[, uniques := 1]
@@ -829,7 +860,7 @@ mvpa_features <- function(acc_ageadjusted) {
 
 }
 
-bout_sequence <- function(acc_stream, break_stream, epoch, return_index = FALSE){ #, min_bout_length
+bout_sequence <- function(acc_stream, break_stream, epoch, return_index = FALSE, return_position = FALSE){ #, min_bout_length
   acc_raw <- data.table("acc_stream" = as.integer(acc_stream), "break_stream" = as.integer(break_stream))
   epoch <- as.integer(epoch)
   bins <- nrow(acc_raw)
@@ -856,9 +887,12 @@ bout_sequence <- function(acc_stream, break_stream, epoch, return_index = FALSE)
 
   acc_raw[, acc_var_length := rep(delta[,relength],delta[,rechange])]
   acc_raw[, index := rep(delta[,index_ref],delta[,rechange])]
+  acc_raw[, position := rep(delta[,reflag],delta[,rechange])]
 
   if(return_index){
     return(acc_raw[,index])
+  } else if (return_position){
+    return(acc_raw[,position])
   } else {
     return(acc_raw[,acc_var_length])
   }
@@ -1449,6 +1483,8 @@ ema_acc_fast <- function(ema_file, activity_data,
   ema_stubs[, ID := tolower(ID)]
   ema_stubs[, time := as.POSIXct(FULLTIME,format="%Y-%m-%d %H:%M:%S",origin="1970-01-01", tz = "America/Los_Angeles")]
 
+  expand_sec <- paste(as.character(min(activity_data$epoch, na.rm = TRUE)),"sec")
+
   keycols <- c("ID","time")
   setorderv(ema_stubs,keycols)
   setkeyv(ema_stubs,keycols)
@@ -1494,7 +1530,7 @@ ema_acc_fast <- function(ema_file, activity_data,
     ema_stubs2[, low_time := as.POSIXct(round(time - as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
     ema_stubs2[, high_time := as.POSIXct(round(time,"min"), tz = "America/Los_Angeles")]
     expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]][,
-                                                                     fulltime := seq(low_time , high_time, by = '30 sec'),
+                                                                     fulltime := seq(low_time , high_time, by = expand_sec),
                                                                      by = .(low_time, high_time)][]
     expand[, id := ID]
     for (type in activity_types){
@@ -1505,7 +1541,7 @@ ema_acc_fast <- function(ema_file, activity_data,
       act_var <- paste("i.",type_var(type),sep="")
       expand[activity_data2, on = c('id','fulltime'), return_var := as.integer(get(act_var))]
       expand[activity_data2, on = c('id','fulltime'), divide_var := as.integer(i.divider)]
-      return <- expand[, .(add_var = sum(return_var/divide_var)), by=.(ID, ACC_STABLE_STUB)]
+      return <- expand[, .(add_var = sum(return_var/divide_var, na.rm = TRUE)), by=.(ID, ACC_STABLE_STUB)]
       #setnames(return,"add_var",eval(before))
       ema_stubs[return, on = c('ACC_STABLE_STUB'), eval(before) := i.add_var]
       ema_progress$tick()
@@ -1517,7 +1553,7 @@ ema_acc_fast <- function(ema_file, activity_data,
     ema_stubs2[, low_time := as.POSIXct(round(time,"min"), tz = "America/Los_Angeles")]
     ema_stubs2[, high_time := as.POSIXct(round(time + as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
     expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]][,
-                                                                     fulltime := seq(low_time , high_time, by = '30 sec'),
+                                                                     fulltime := seq(low_time , high_time, by = expand_sec),
                                                                      by = .(low_time, high_time)][]
     expand[, id := ID]
     for (type in activity_types){
@@ -1540,7 +1576,7 @@ ema_acc_fast <- function(ema_file, activity_data,
     ema_stubs2[, low_time := as.POSIXct(round(time - as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
     ema_stubs2[, high_time := as.POSIXct(round(time + as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
     expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]][,
-                                                                     fulltime := seq(low_time , high_time, by = '30 sec'),
+                                                                     fulltime := seq(low_time , high_time, by = expand_sec),
                                                                      by = .(low_time, high_time)][]
     expand[, id := ID]
     for (type in activity_types){
