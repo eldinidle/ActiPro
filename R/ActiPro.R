@@ -169,7 +169,7 @@ reach_adapter <- function(rds_filepath){
 #' @examples
 #'
 #' @export
-sedentary_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE) {
+sedentary_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE, valid_only = TRUE) {
   # Standardizing to minute epochs for relevant variables (sed)
   if(!cut){
     acc_ageadjusted[,cut := 0]
@@ -177,7 +177,7 @@ sedentary_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE) {
   if(!ext){
     acc_ageadjusted[,ext := 0]
   }
-  epoch_acc <- acc_ageadjusted[valid_day == 1,
+  epoch_acc <- acc_ageadjusted[valid_day == 1 | valid_day == as.integer(valid_only),
                                list(id,fulldate,sed,fulltime,wear,age,divider,ext,cut)]
   epoch_acc[, hour := as.POSIXlt(fulltime)$hour]
   epoch_acc[, minute := as.POSIXlt(fulltime)$min]
@@ -368,7 +368,7 @@ sedentary_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE) {
 #' @examples
 #'
 #' @export
-ancillary_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE) {
+ancillary_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE, valid_only = TRUE) {
   # Standardizing to minute epochs for relevant variables (Activity,Steps)
   if(!cut){
     acc_ageadjusted[,cut := 0]
@@ -376,7 +376,7 @@ ancillary_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE) {
   if(!ext){
     acc_ageadjusted[,ext := 0]
   }
-  epoch_acc <- acc_ageadjusted[valid_day == 1,
+  epoch_acc <- acc_ageadjusted[valid_day == 1 | valid_day == as.integer(valid_only),
                                list(id,fulldate,Activity,Steps,fulltime,wear,age,divider,ext,cut)]
   epoch_acc[, hour := as.POSIXlt(fulltime)$hour]
   epoch_acc[, minute := as.POSIXlt(fulltime)$min]
@@ -440,7 +440,7 @@ ancillary_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE) {
 #' @examples
 #'
 #' @export
-light_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE) {
+light_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE, valid_only = TRUE) {
   # Standardizing to minute epochs for relevant variables (sed)
   if(!cut){
     acc_ageadjusted[,cut := 0]
@@ -448,7 +448,7 @@ light_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE) {
   if(!ext){
     acc_ageadjusted[,ext := 0]
   }
-  epoch_acc <- acc_ageadjusted[valid_day == 1,
+  epoch_acc <- acc_ageadjusted[valid_day == 1 | valid_day == as.integer(valid_only),
                                list(id,fulldate,light,fulltime,wear,age,divider,ext,cut)]
   epoch_acc[, hour := as.POSIXlt(fulltime)$hour]
   epoch_acc[, minute := as.POSIXlt(fulltime)$min]
@@ -619,7 +619,7 @@ light_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE) {
 #'
 #'
 #' @export
-mvpa_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE) {
+mvpa_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE, valid_only = TRUE) {
   # Standardizing to minute epochs for relevant variables (mvpa and Activity)
   if(!cut){
     acc_ageadjusted[,cut := 0]
@@ -627,7 +627,7 @@ mvpa_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE) {
   if(!ext){
     acc_ageadjusted[,ext := 0]
   }
-  epoch_acc <- acc_ageadjusted[valid_day == 1,
+  epoch_acc <- acc_ageadjusted[valid_day == 1 | valid_day == as.integer(valid_only),
                                list(id,fulldate,Activity,
                                     mvpa = as.integer(mod == 1 | vig == 1),
                                     fulltime,wear,age,divider,ext,cut)]
@@ -1484,6 +1484,7 @@ ema_acc_fast <- function(ema_file, activity_data,
   ema_stubs[, time := as.POSIXct(FULLTIME,format="%Y-%m-%d %H:%M:%S",origin="1970-01-01", tz = "America/Los_Angeles")]
 
   expand_sec <- paste(as.character(min(activity_data$epoch, na.rm = TRUE)),"sec")
+  multiplier_sec <- as.integer(60L/min(activity_data$epoch))
 
   keycols <- c("ID","time")
   setorderv(ema_stubs,keycols)
@@ -1526,7 +1527,7 @@ ema_acc_fast <- function(ema_file, activity_data,
                                    , total = (length(activity_types)*length(time_stubs)*3), clear = FALSE, width = 60)
 
   for (ts in time_stubs) {
-    ema_stubs2[, expand_times := (as.integer(ts)*2L)]
+    ema_stubs2[, expand_times := (as.integer(ts)*multiplier_sec)]
     ema_stubs2[, low_time := as.POSIXct(round(time - as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
     ema_stubs2[, high_time := as.POSIXct(round(time,"min"), tz = "America/Los_Angeles")]
     expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]][,
@@ -1549,7 +1550,7 @@ ema_acc_fast <- function(ema_file, activity_data,
   }
 
   for (ts in time_stubs) {
-    ema_stubs2[, expand_times := (as.integer(ts)*2L)]
+    ema_stubs2[, expand_times := (as.integer(ts)*multiplier_sec)]
     ema_stubs2[, low_time := as.POSIXct(round(time,"min"), tz = "America/Los_Angeles")]
     ema_stubs2[, high_time := as.POSIXct(round(time + as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
     expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]][,
@@ -1572,7 +1573,7 @@ ema_acc_fast <- function(ema_file, activity_data,
   }
 
   for (ts in time_stubs) {
-    ema_stubs2[, expand_times := (as.integer(ts)*4L)]
+    ema_stubs2[, expand_times := (as.integer(ts)*2L*multiplier_sec)]
     ema_stubs2[, low_time := as.POSIXct(round(time - as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
     ema_stubs2[, high_time := as.POSIXct(round(time + as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
     expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]][,
