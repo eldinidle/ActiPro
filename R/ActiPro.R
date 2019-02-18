@@ -837,6 +837,13 @@ mvpa_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE, valid_only = 
   mvpa_ratio_long_10 <- temp_merge[,list(id,fulldate,mvpa_ratio_long_10 = count_10_long_bouts/count_day_bouts)]
   mvpa_ratio_long_20 <- temp_merge[,list(id,fulldate,mvpa_ratio_long_20 = count_20_long_bouts/count_day_bouts)]
 
+  #Gini and alpha for MVPA
+  mvpa_gini <- day_bouts[, list(mvpa_gini = gini(mvpa_event_length)), by = list(id,fulldate)]
+  day_bouts[, min_event := min(mvpa_event_length), by = list(id,fulldate)]
+  day_bouts[, m_def := log(mvpa_event_length/min_event)]
+  mvpa_alpha <- day_bouts[, list(mvpa_alpha = 1+(1/mean(m_def, na.rm = TRUE))),
+                           by = list(id, fulldate)]
+
 
 
   mvpa_features <- list(mvpa_total,
@@ -852,7 +859,9 @@ mvpa_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE, valid_only = 
                         mvpa_met_max,
                         mvpa_guideline_met_hrs,
                         mvpa_guideline_bouts,
-                        mvpa_guideline_length)
+                        mvpa_guideline_length,
+                        mvpa_alpha,
+                        mvpa_gini)
 
   return_mvpa <- Reduce(function(...) merge(..., by = c("id","fulldate"), all = T), mvpa_features)
 
@@ -953,18 +962,36 @@ actigraph_metadata <- function(file_location) {
 actigraph_raw <- function(file_location, dataTable = FALSE, metaData = TRUE) {
   if(dataTable){
     if(metaData){
-      raw <- fread(file_location, skip=10, header = T)
+      raw <- tryCatch(
+        {fread(file_location, skip=10, header = T)},
+        error=function(cond) {
+          message("Using READ CSV Instead")
+          as.data.table(read_csv(file_location, skip = 10, col_names = TRUE))
+        }, finally={})
       raw$Date <- NULL
       raw$Time <- NULL
       raw$Vector.Magnitude <- NULL
       raw$VectorMagnitude <- NULL
       raw$`Vector Magnitude` <- NULL
     } else {
-      read_raw <- fread(file_location, header = T)
+      read_raw <- tryCatch(
+        {fread(file_location, header = T)},
+        error=function(cond) {
+          message("Using READ CSV Instead")
+          as.data.table(read_csv(file_location))
+        }, finally={})
       raw <- data.table("Activity" = read_raw$Activity)
     }
   } else {
-    raw <- fread(file_location, skip=10, header = F)
+    raw <- tryCatch(
+      {fread(file_location, skip=10, header = F)},
+      error=function(cond){
+        message("Using READ CSV Instead")
+        as.data.table(read_csv(file_location, skip = 10))
+      }, finally={})
+    raw$Vector.Magnitude <- NULL
+    raw$VectorMagnitude <- NULL
+    raw$`Vector Magnitude` <- NULL
   }
   if(metaData){
     metadata <- as.data.table(actigraph_metadata(file_location))
@@ -990,13 +1017,25 @@ actigraph_raw <- function(file_location, dataTable = FALSE, metaData = TRUE) {
   #raw[, fulltime := NULL]
   if(metaData){
     if(dataTable){
-      dtStart <- paste(fread(file_location, skip=10, nrows = 1, header = T)$Date,fread(file_location, skip=10, nrows = 1, header = T)$Time)
+      dtstarttable <- tryCatch(
+        {fread(file_location, skip=10, nrows = 1, header = T)},
+        error=function(cond) {
+          message("Using READ CSV Instead")
+          as.data.table(read_csv(file_location, skip=10, n_max = 1, col_names = T))
+        }, finally={})
+      dtStart <- paste(dtstarttable$Date,dtstarttable$Time)
       raw[1,fulltime := as.POSIXct(dtStart,format=paste("%",format[1,1],"/%",format[2,1],"/%",format[3,1]," %H:%M:%S", sep=""), tz = "America/Los_Angeles")]
     } else {
       raw[1,fulltime := as.POSIXct(start,format=paste("%",format[1,1],"/%",format[2,1],"/%",format[3,1]," %H:%M:%S", sep=""), tz = "America/Los_Angeles")]
     }
   } else {
-    start <- paste(fread(file_location, nrows = 1, header = T)$Date,fread(file_location, nrows = 1, header = T)$Time)
+    dtstarttable <- tryCatch(
+      {fread(file_location, nrows = 1, header = T)},
+      error=function(cond) {
+        message("Using READ CSV Instead")
+        as.data.table(read_csv(file_location, n_max = 1, col_names = T))
+      }, finally={})
+    start <- paste(dtstarttable$Date,dtstarttable$Time)
     raw[1,fulltime := as.POSIXct(start,format=paste("%",format[1,1],"/%",format[2,1],"/%",format[3,1]," %H:%M:%S", sep=""), tz = "America/Los_Angeles")]
   }
 
@@ -1008,7 +1047,13 @@ actigraph_raw <- function(file_location, dataTable = FALSE, metaData = TRUE) {
 
     epoch <- (epoch_hour*60*60)+(epoch_minute*60)+epoch_second
   } else {
-    dtNext <- paste(fread(file_location, nrows = 2, header = T)$Date[2],fread(file_location, nrows = 2, header = T)$Time[2])
+    dtstarttable <- tryCatch(
+      {fread(file_location, nrows = 2, header = T)},
+      error=function(cond) {
+        message("Using READ CSV Instead")
+        as.data.table(read_csv(file_location, n_max = 2, col_names = T))
+      }, finally={})
+    dtNext <- paste(dtstarttable$Date[2],dtstarttable$Time[2])
     raw[2, fulltime := as.POSIXct(dtNext,format=paste("%",format[1,1],"/%",format[2,1],"/%",format[3,1]," %H:%M:%S", sep=""), tz = "America/Los_Angeles")]
     epoch <- raw$fulltime[2]-raw$fulltime[1]
   }
@@ -1175,6 +1220,7 @@ acc_ageadjusted <- function(folder_location, age_data_file, nhanes_nonwear = TRU
   registerDoParallel(cl)
 
   if(!agdFile){
+    message("No AGD File")
     file_locations <- list.files(folder_location, full.names = TRUE, pattern = "\\.csv$")
     file_ids <- list.files(folder_location, full.names = FALSE, pattern = "\\.csv$")
     acc_vars<- c("Activity", "Axis 2","Axis 3", "Steps", "HR","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying")
@@ -1182,7 +1228,7 @@ acc_ageadjusted <- function(folder_location, age_data_file, nhanes_nonwear = TRU
     acc_progress <- progress_bar$new(format = "Processing [:bar] :percent eta: :eta elapsed time :elapsed"
                                      , total = length(file_ids)/(cores-1), clear = FALSE, width = 60)
 
-    acc_full <- foreach(i=1:length(file_ids), .combine=rbind,.packages=c("data.table","plyr","progress","ActiPro")) %dopar% {
+    acc_full <- foreach(i=1:length(file_ids), .combine=rbind,.packages=c("readr","data.table","plyr","progress","ActiPro")) %dopar% {
       acc_hold <- NULL
       acc_hold <- acc_nonwear(file_locations[i], nhanes = nhanes_nonwear, dataTable, metaData)
       for(var in acc_vars){
@@ -1196,6 +1242,7 @@ acc_ageadjusted <- function(folder_location, age_data_file, nhanes_nonwear = TRU
     }
   }
   if(agdFile){
+    message("AGD File")
     file_locations <- list.files(folder_location, full.names = TRUE, pattern = "\\.agd$")
     file_ids <- list.files(folder_location, full.names = FALSE, pattern = "\\.agd$")
     acc_vars<- c("Activity", "Axis 2","Axis 3", "Steps", "HR","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying")
@@ -1203,7 +1250,7 @@ acc_ageadjusted <- function(folder_location, age_data_file, nhanes_nonwear = TRU
     acc_progress <- progress_bar$new(format = "Processing [:bar] :percent eta: :eta elapsed time :elapsed"
                                      , total = length(file_ids)/(cores-1), clear = FALSE, width = 60)
 
-    acc_full <- foreach(i=1:length(file_ids), .combine=rbind,.packages=c("data.table","plyr","progress","ActiPro","DBI","RSQLite")) %dopar% {
+    acc_full <- foreach(i=1:length(file_ids), .combine=rbind,.packages=c("readr","data.table","plyr","progress","ActiPro","DBI","RSQLite")) %dopar% {
       acc_hold <- NULL
       acc_hold <- acc_nonwear_agd(file_locations[i], nhanes = nhanes_nonwear)
       for(var in acc_vars){
@@ -1220,7 +1267,6 @@ acc_ageadjusted <- function(folder_location, age_data_file, nhanes_nonwear = TRU
   acc_full[, id := tolower(substr(file_id,1,id_length))]
 
   acc_full_age <- process_age(age_data_file, acc_full)
-  acc_full_age[, string_time := as.character(as.POSIXct(fulltime, origin = "1970-01-01", tz = "America/Los_Angeles"))]
 
 
   stopCluster(cl)
@@ -1360,15 +1406,15 @@ ema_acc <- function(ema_file, activity_data,
   setkeyv(activity_data,keycols)
 
   ema_stubs2 <- ema_stubs
-  ema_stubs2[, es_date := as.IDate(FULLTIME, format="%Y-%m-%d %H:%M:%S")]
-  ema_stubs2[, es_time := as.ITime(FULLTIME, format="%Y-%m-%d %H:%M:%S")]
+  ema_stubs2[, es_date := as.IDate(fulltime, tz = "America/Los_Angeles")]
+  ema_stubs2[, es_time := as.ITime(fulltime, tz = "America/Los_Angeles")]
   keycols <- c("ID","es_date","es_time")
   setorderv(ema_stubs2,keycols)
   setkeyv(ema_stubs2,keycols)
 
   activity_data2 <- activity_data
-  activity_data2[, ad_date := as.IDate(string_time, format="%Y-%m-%d %H:%M:%S")]
-  activity_data2[, ad_time := as.ITime(string_time, format="%Y-%m-%d %H:%M:%S")]
+  activity_data2[, ad_date := as.IDate(fulltime, tz = "America/Los_Angeles")]
+  activity_data2[, ad_time := as.ITime(fulltime, tz = "America/Los_Angeles")]
   keycols <- c("id","ad_date","ad_time")
   setorderv(activity_data2,keycols)
   setkeyv(activity_data2,keycols)
@@ -1477,124 +1523,189 @@ ema_acc <- function(ema_file, activity_data,
 #' @export
 ema_acc_fast <- function(ema_file, activity_data,
                          time_stubs = c("15","30","60","120"),
-                         activity_types = c("VALID","NONVALID","MOD","VIG","SED","LIGHT","MVPA","MVPA_BOUT","ACTIVITY")){
+                         activity_types = c("VALID","NONVALID","MOD","VIG","SED","LIGHT","MVPA","MVPA_BOUT","ACTIVITY"),
+                         cut_dataset_start = 0){
+  if(is.null(activity_data) | nrow(activity_data) == 0){
+    return(NULL)
+  }
   ema_stubs <- fread(ema_file, colClasses = c("character","character","integer"),
-                     col.names = c("ID","FULLTIME","ACC_STABLE_STUB"))
-  ema_stubs[, ID := tolower(ID)]
+                     col.names = c("id","FULLTIME","ACC_STABLE_STUB"))
+  ema_stubs[, id := tolower(id)]
+  activity_data[, tester := 1L]
+  activity_data_ids <- activity_data[, lapply(.SD, first) , by = "id",.SDcols = c("tester")]
+  activity_data_ids[, tester := NULL]
+  ema_stubs <- merge(ema_stubs, activity_data_ids, by = "id", all = FALSE)
   ema_stubs[, time := as.POSIXct(FULLTIME,format="%Y-%m-%d %H:%M:%S",origin="1970-01-01", tz = "America/Los_Angeles")]
+  if(cut_dataset_start == 0){
+    ema_stubs[, split := 0]
+  } else {
+    ema_stubs[, split := as.integer((substring(id,cut_dataset_start)))]
+  }
+  ema_datasets <- split(ema_stubs, by = "split")
 
-  expand_sec <- paste(as.character(min(activity_data$epoch, na.rm = TRUE)),"sec")
-  multiplier_sec <- as.integer(60L/min(activity_data$epoch))
-
-  keycols <- c("ID","time")
-  setorderv(ema_stubs,keycols)
-  setkeyv(ema_stubs,keycols)
+  expand_sec <- "60 sec" # paste(as.character(min(activity_data$epoch, na.rm = TRUE)),"sec")
+  multiplier_sec <- 1 # as.integer(60L/min(activity_data$epoch))
 
   keycols <- c("id","fulltime")
   setorderv(activity_data,keycols)
   setkeyv(activity_data,keycols)
 
-  ema_stubs2 <- ema_stubs
-  ema_stubs2[, es_date := as.IDate(FULLTIME, format="%Y-%m-%d %H:%M:%S")]
-  ema_stubs2[, es_time := as.ITime(FULLTIME, format="%Y-%m-%d %H:%M:%S")]
-  keycols <- c("ID","es_date","es_time")
-  setorderv(ema_stubs2,keycols)
-  setkeyv(ema_stubs2,keycols)
-
-  activity_data2 <- activity_data
-  activity_data2[, ad_date := as.IDate(string_time, format="%Y-%m-%d %H:%M:%S")]
-  activity_data2[, ad_time := as.ITime(string_time, format="%Y-%m-%d %H:%M:%S")]
+  activity_data[, hour := as.POSIXlt(fulltime)$hour]
+  activity_data[, minute := as.POSIXlt(fulltime)$min]
+  minute_acc <- activity_data[,
+                          list(Activity =  sum(Activity, na.rm = TRUE),
+                               light =  sum(light, na.rm = TRUE),
+                               mod =  sum(mod, na.rm = TRUE),
+                               vig =  sum(vig, na.rm = TRUE),
+                               sed =  sum(sed, na.rm = TRUE),
+                               wear = sum(wear, na.rm = TRUE),
+                               nonwear = sum(nonwear, na.rm = TRUE),
+                               mvpa_bout =  sum(mvpa_bout, na.rm = TRUE),
+                               mvpa =  sum(mvpa, na.rm = TRUE),
+                               divider = mean(divider, na.rm = TRUE)),
+                          by = list(id,
+                                    fulldate,
+                                    hour,
+                                    minute)]
+  divided_acc <- minute_acc[, list(
+    id = id,
+    fulldate = fulldate,
+    fulltime = as.POSIXct(paste(as.character(fulldate)," ",
+                      sprintf("%02d",hour),":",
+                      sprintf("%02d",minute),":00",sep=""),
+                      format="%Y-%m-%d %H:%M:%S",origin="1970-01-01", tz = "America/Los_Angeles"),
+    Activity =  Activity/divider,
+    light =  light/divider,
+    mod =  mod/divider,
+    vig =  vig/divider,
+    sed =  sed/divider,
+    wear = wear/divider,
+    nonwear = nonwear/divider,
+    mvpa_bout =  mvpa_bout/divider,
+    mvpa =  mvpa/divider,
+    divider = 1L)]
+  activity_data2 <- divided_acc
+  activity_data2[, ad_date := as.IDate(fulltime, format="%Y-%m-%d %H:%M:%S")]
+  activity_data2[, ad_time := as.ITime(fulltime, format="%Y-%m-%d %H:%M:%S")]
   keycols <- c("id","ad_date","ad_time")
   setorderv(activity_data2,keycols)
   setkeyv(activity_data2,keycols)
+  setorderv(activity_data2,c("id","fulltime"))
+  setkeyv(activity_data2,c("id","fulltime"))
+
+  dataset_return <- NULL
+  for(ema_stubs in ema_datasets){
+    keycols <- c("id","time")
+    setorderv(ema_stubs,keycols)
+    setkeyv(ema_stubs,keycols)
+
+    ema_stubs2 <- ema_stubs
+    ema_stubs2[, es_date := as.IDate(FULLTIME, format="%Y-%m-%d %H:%M:%S")]
+    ema_stubs2[, es_time := as.ITime(FULLTIME, format="%Y-%m-%d %H:%M:%S")]
+    keycols <- c("id","es_date","es_time")
+    setorderv(ema_stubs2,keycols)
+    setkeyv(ema_stubs2,keycols)
 
 
-  type_var <- function(type_switch){
-    return(switch(type_switch,
-                  VALID = "wear",
-                  NONVALID = "nonwear",
-                  MOD = "mod",
-                  VIG = "vig",
-                  SED = "sed",
-                  LIGHT = "light",
-                  MET = "met",
-                  MVPA = "mvpa",
-                  MVPA_BOUT = "mvpa_bout",
-                  ACTIVITY = "Activity"))
-  }
-
-  ema_progress <- progress_bar$new(format = "Processing [:bar] :percent eta: :eta elapsed time :elapsed"
-                                   , total = (length(activity_types)*length(time_stubs)*3), clear = FALSE, width = 60)
-
-  for (ts in time_stubs) {
-    ema_stubs2[, expand_times := (as.integer(ts)*multiplier_sec)]
-    ema_stubs2[, low_time := as.POSIXct(round(time - as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
-    ema_stubs2[, high_time := as.POSIXct(round(time,"min"), tz = "America/Los_Angeles")]
-    expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]][,
-                                                                     fulltime := seq(low_time , high_time, by = expand_sec),
-                                                                     by = .(low_time, high_time)][]
-    expand[, id := ID]
-    for (type in activity_types){
-      print(ts)
-      print(type)
-      print("BEFORE")
-      before <- paste(type,"_",ts,"_BEFORE", sep="")
-      act_var <- paste("i.",type_var(type),sep="")
-      expand[activity_data2, on = c('id','fulltime'), return_var := as.integer(get(act_var))]
-      expand[activity_data2, on = c('id','fulltime'), divide_var := as.integer(i.divider)]
-      return <- expand[, .(add_var = sum(return_var/divide_var, na.rm = TRUE)), by=.(ID, ACC_STABLE_STUB)]
-      #setnames(return,"add_var",eval(before))
-      ema_stubs[return, on = c('ACC_STABLE_STUB'), eval(before) := i.add_var]
-      ema_progress$tick()
+    type_var <- function(type_switch){
+      return(switch(type_switch,
+                    VALID = "wear",
+                    NONVALID = "nonwear",
+                    MOD = "mod",
+                    VIG = "vig",
+                    SED = "sed",
+                    LIGHT = "light",
+                    #MET = "met",
+                    MVPA = "mvpa",
+                    MVPA_BOUT = "mvpa_bout",
+                    ACTIVITY = "Activity"))
     }
-  }
 
-  for (ts in time_stubs) {
-    ema_stubs2[, expand_times := (as.integer(ts)*multiplier_sec)]
-    ema_stubs2[, low_time := as.POSIXct(round(time,"min"), tz = "America/Los_Angeles")]
-    ema_stubs2[, high_time := as.POSIXct(round(time + as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
-    expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]][,
-                                                                     fulltime := seq(low_time , high_time, by = expand_sec),
-                                                                     by = .(low_time, high_time)][]
-    expand[, id := ID]
-    for (type in activity_types){
-      print(ts)
-      print(type)
-      print("AFTER")
-      before <- paste(type,"_",ts,"_AFTER", sep="")
-      act_var <- paste("i.",type_var(type),sep="")
-      expand[activity_data2, on = c('id','fulltime'), return_var := as.integer(get(act_var))]
-      expand[activity_data2, on = c('id','fulltime'), divide_var := as.integer(i.divider)]
-      return <- expand[, .(add_var = sum(return_var/divide_var)), by=.(ID, ACC_STABLE_STUB)]
-      #setnames(return,"add_var",eval(before))
-      ema_stubs[return, on = c('ACC_STABLE_STUB'), eval(before) := i.add_var]
-      ema_progress$tick()
+    #ema_progress <- progress_bar$new(format = "Processing [:bar] :percent eta: :eta elapsed time :elapsed"
+    #                                 , total = (length(activity_types)*length(time_stubs)*3), clear = FALSE, width = 60)
+
+    for (ts in time_stubs) {
+      ema_stubs2[, expand_times := (as.integer(ts)*multiplier_sec)]
+      ema_stubs2[, low_time := as.POSIXct(round(time - as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
+      ema_stubs2[, high_time := as.POSIXct(round(time,"min"), tz = "America/Los_Angeles")]
+      expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]][,
+                                                                       fulltime := seq(low_time , high_time, by = expand_sec),
+                                                                       by = .(low_time, high_time)][]
+      setorderv(expand,c("id","fulltime"))
+      setkeyv(expand,c("id","fulltime"))
+      for (type in activity_types){
+        print(ts)
+        print(type)
+        print("BEFORE")
+        before <- paste(type,"_",ts,"_BEFORE", sep="")
+        act_var <- paste("i.",type_var(type),sep="")
+        merged <- expand[activity_data2, nomatch = 0, with = FALSE, j =
+                           c('id','fulltime',act_var,'divider','id','ACC_STABLE_STUB')]
+        merged[, return_var := as.integer(get(act_var))]
+        return <- merged[, .(add_var = sum(return_var/divider, na.rm = TRUE)), by=.(id, ACC_STABLE_STUB)]
+        #setnames(return,"add_var",eval(before))
+        ema_stubs[return, on = c('ACC_STABLE_STUB'), eval(before) := i.add_var]
+      #  ema_progress$tick()
+      }
     }
-  }
 
-  for (ts in time_stubs) {
-    ema_stubs2[, expand_times := (as.integer(ts)*2L*multiplier_sec)]
-    ema_stubs2[, low_time := as.POSIXct(round(time - as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
-    ema_stubs2[, high_time := as.POSIXct(round(time + as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
-    expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]][,
-                                                                     fulltime := seq(low_time , high_time, by = expand_sec),
-                                                                     by = .(low_time, high_time)][]
-    expand[, id := ID]
-    for (type in activity_types){
-      print(ts)
-      print(type)
-      print("WINDOW")
-      before <- paste(type,"_",ts,"_WINDOW", sep="")
-      act_var <- paste("i.",type_var(type),sep="")
-      expand[activity_data2, on = c('id','fulltime'), return_var := as.integer(get(act_var))]
-      expand[activity_data2, on = c('id','fulltime'), divide_var := as.integer(i.divider)]
-      return <- expand[, .(add_var = sum(return_var/divide_var)), by=.(ID, ACC_STABLE_STUB)]
-      #setnames(return,"add_var",eval(before))
-      ema_stubs[return, on = c('ACC_STABLE_STUB'), eval(before) := i.add_var]
-      ema_progress$tick()
+    for (ts in time_stubs) {
+      ema_stubs2[, expand_times := (as.integer(ts)*multiplier_sec)]
+      ema_stubs2[, low_time := as.POSIXct(round(time,"min"), tz = "America/Los_Angeles")]
+      ema_stubs2[, high_time := as.POSIXct(round(time + as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
+      expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]][,
+                                                                       fulltime := seq(low_time , high_time, by = expand_sec),
+                                                                       by = .(low_time, high_time)][]
+      setorderv(expand,c("id","fulltime"))
+      setkeyv(expand,c("id","fulltime"))
+      for (type in activity_types){
+        print(ts)
+        print(type)
+        print("AFTER")
+        before <- paste(type,"_",ts,"_AFTER", sep="")
+        act_var <- paste("i.",type_var(type),sep="")
+        merged <- expand[activity_data2, nomatch = 0, with = FALSE, j =
+                           c('id','fulltime',act_var,'divider','id','ACC_STABLE_STUB')]
+        merged[, return_var := as.integer(get(act_var))]
+        return <- merged[, .(add_var = sum(return_var/divider, na.rm = TRUE)), by=.(id, ACC_STABLE_STUB)]
+        #setnames(return,"add_var",eval(before))
+        ema_stubs[return, on = c('ACC_STABLE_STUB'), eval(before) := i.add_var]
+      #  ema_progress$tick()
+      }
     }
+
+    for (ts in time_stubs) {
+      ema_stubs2[, expand_times := (as.integer(ts)*2L*multiplier_sec)]
+      ema_stubs2[, low_time := as.POSIXct(round(time - as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
+      ema_stubs2[, high_time := as.POSIXct(round(time + as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
+      expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]][,
+                                                                       fulltime := seq(low_time , high_time, by = expand_sec),
+                                                                       by = .(low_time, high_time)][]
+      setorderv(expand,c("id","fulltime"))
+      setkeyv(expand,c("id","fulltime"))
+      for (type in activity_types){
+        print(ts)
+        print(type)
+        print("WINDOW")
+        before <- paste(type,"_",ts,"_WINDOW", sep="")
+        act_var <- paste("i.",type_var(type),sep="")
+        merged <- expand[activity_data2, nomatch = 0, with = FALSE, j =
+                           c('id','fulltime',act_var,'divider','id','ACC_STABLE_STUB')]
+        merged[, return_var := as.integer(get(act_var))]
+        return <- merged[, .(add_var = sum(return_var/divider, na.rm = TRUE)), by=.(id, ACC_STABLE_STUB)]
+        #setnames(return,"add_var",eval(before))
+        ema_stubs[return, on = c('ACC_STABLE_STUB'), eval(before) := i.add_var]
+      #  ema_progress$tick()
+      }
+    }
+
+    dataset_return <- cbind(list(dataset_return,ema_stubs))
   }
 
-  return(ema_stubs)
+  if(cut_dataset_start == 0){
+    dataset_return <- as.data.table(dataset_return[2,1])
+  }
+
+  return(dataset_return)
 }
 
