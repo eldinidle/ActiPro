@@ -4,10 +4,17 @@
 \alias{mvpa_features}
 \title{Produce novel MVPA features}
 \usage{
-mvpa_features(acc_ageadjusted)
+mvpa_features(acc_ageadjusted, cut = TRUE, ext = TRUE,
+  valid_only = TRUE)
 }
 \arguments{
 \item{acc_ageadjusted}{the file created by ActiPro}
+
+\item{cut}{parameter indicating an epoch for manual cut; in this case, for manually coded sleep from REACH data}
+
+\item{ext}{parameter indicating an epoch that exceeds standard bounds}
+
+\item{valid_only}{indicates that computation will occur on non-valid days only, otherwise non-valid days will be discarded}
 }
 \value{
 A data.table containing a set of novel statistical parameters based on Keadle

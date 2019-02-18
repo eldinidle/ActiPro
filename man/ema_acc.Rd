@@ -23,7 +23,3 @@ A data.table with windows appended to ema_stubs file
 \description{
 Returns a datatable to merge accelerometer data back into EMA data
 }
-\examples{
-ema_acc_table <- ema_acc[ema_stubs, activity_data]
-
-}

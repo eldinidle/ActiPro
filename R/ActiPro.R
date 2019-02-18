@@ -114,7 +114,6 @@ actigraph_mode_columns <- function(mode_integer) {
 #'
 #' @return A data.table containing the Actipro compatible dataset
 #'
-#' @examples
 #'
 #' @export
 reach_adapter <- function(rds_filepath){
@@ -160,13 +159,15 @@ reach_adapter <- function(rds_filepath){
 }
 
 #' Produce novel sedentary features
-#' @name sedentary_feature
+#' @name sedentary_features
 #'
 #' @param acc_ageadjusted the file created by ActiPro
+#' @param cut parameter indicating an epoch for manual cut; in this case, for manually coded sleep from REACH data
+#' @param ext parameter indicating an epoch that exceeds standard bounds
+#' @param valid_only indicates that computation will occur on non-valid days only, otherwise non-valid days will be discarded
 #'
 #' @return A data.table containing a set of novel statistical parameters based on Keadle
 #'
-#' @examples
 #'
 #' @export
 sedentary_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE, valid_only = TRUE) {
@@ -362,10 +363,12 @@ sedentary_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE, valid_on
 #' @name ancillary_features
 #'
 #' @param acc_ageadjusted the file created by ActiPro
+#' @param cut parameter indicating an epoch for manual cut; in this case, for manually coded sleep from REACH data
+#' @param ext parameter indicating an epoch that exceeds standard bounds
+#' @param valid_only indicates that computation will occur on non-valid days only, otherwise non-valid days will be discarded
 #'
 #' @return A data.table containing a set of novel statistical parameters based on Keadle
 #'
-#' @examples
 #'
 #' @export
 ancillary_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE, valid_only = TRUE) {
@@ -434,10 +437,12 @@ ancillary_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE, valid_on
 #' @name light_features
 #'
 #' @param acc_ageadjusted the file created by ActiPro
+#' @param cut parameter indicating an epoch for manual cut; in this case, for manually coded sleep from REACH data
+#' @param ext parameter indicating an epoch that exceeds standard bounds
+#' @param valid_only indicates that computation will occur on non-valid days only, otherwise non-valid days will be discarded
 #'
 #' @return A data.table containing a set of novel statistical parameters based on Keadle
 #'
-#' @examples
 #'
 #' @export
 light_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE, valid_only = TRUE) {
@@ -612,10 +617,13 @@ light_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE, valid_only =
 #' Produce novel MVPA features
 #'
 #' @name mvpa_features
-#'
+#' @param cut parameter indicating an epoch for manual cut; in this case, for manually coded sleep from REACH data
+#' @param ext parameter indicating an epoch that exceeds standard bounds
+#' @param valid_only indicates that computation will occur on non-valid days only, otherwise non-valid days will be discarded
 #' @param acc_ageadjusted the file created by ActiPro
 #'
 #' @return A data.table containing a set of novel statistical parameters based on Keadle
+#'
 #'
 #'
 #' @export
@@ -1195,18 +1203,16 @@ acc_nonwear <- function(file_location, nhanes = TRUE, dataTable = FALSE, metaDat
 
 #' Produce an activity dataset from raw data
 #'
-#' @param folder_location location of \strong(.csv) files
-#' @param age_data_file two column \strong(.csv) file containing \strong(id) and \strong(age)
+#' @param folder_location location of .csv or agd files
+#' @param age_data_file two column .csv file containing id and age
 #' @param nhanes_nonwear = TRUE, use NHANES non-wear thresholds
-#' @param id_length = 7, length of \strong(id) variable in \strong(age_data_file)
-#' @param agdFile = FALSE, agd file, not csv, if TRUE, overrides \strong(dataTable) and \strong(metaData) settings
+#' @param id_length = 7, length of id variable in age_data_file
+#' @param agdFile = FALSE, agd file, not csv, if TRUE, overrides \code{dataTable} and \code{metaData} settings
 #' @param dataTable = FALSE, datatable format, post-processed with ActiLife
-#' @param metaData = TRUE, presence of metadata in headers of \strong(.csv) file
+#' @param metaData = TRUE, presence of metadata in headers of csv file
 #'
 #' @return A data.table containing a variety of activity fields and wear time
 #'
-#' @examples
-#' acc <- acc_ageadjusted(folder_location, age_data_file, TRUE, 7, FALSE, TRUE)
 #'
 #' @export
 acc_ageadjusted <- function(folder_location, age_data_file, nhanes_nonwear = TRUE, id_length = 7, agdFile = FALSE, dataTable = FALSE, metaData = TRUE){
@@ -1321,8 +1327,6 @@ process_age <- function(age_data_file, acc_full){
 #'
 #' @return A vector that fits in the \code{acc_ageadjusted} data.table
 #'
-#' @examples
-#' acc_ageadjusted[, mvpa_bout := function(acc_ageadjusted, 0, 0, 600)
 #'
 #' @export
 mvpa_bouts <- function(acc_ageadjusted, min_break, act_break, bout_length) {
@@ -1377,8 +1381,6 @@ mvpa_bouts <- function(acc_ageadjusted, min_break, act_break, bout_length) {
 #'
 #' @return A data.table with windows appended to ema_stubs file
 #'
-#' @examples
-#' ema_acc_table <- ema_acc[ema_stubs, activity_data]
 #'
 #' @export
 ema_acc <- function(ema_file, activity_data,
@@ -1510,15 +1512,14 @@ ema_acc <- function(ema_file, activity_data,
 
 #' Returns a datatable to merge accelerometer data back into EMA data
 #'
-#' @param ema_file A csv file with three columns, id, fulltime, and index
+#' @param ema_file A csv file with three columns, id, fulltime, and index in that specific order
 #' @param activity_data An \code{acc_ageadjusted} data.table
 #' @param time_stubs Time windows to use
 #' @param activity_types Types of activity from \code{acc_ageadjusted} data.table
+#' @param cut_dataset_start the number of timea to split the ema dataset, this might be needed for very large studies or slow computers
 #'
 #' @return A data.table with windows appended to ema_stubs file
 #'
-#' @examples
-#' ema_acc_table <- ema_acc[ema_stubs, activity_data]
 #'
 #' @export
 ema_acc_fast <- function(ema_file, activity_data,

@@ -15,6 +15,3 @@ A data.table containing the Actipro compatible dataset
 \description{
 Convert dataset from Reach Lab to Actipro
 }
-\examples{
-
-}

@@ -4,26 +4,24 @@
 \alias{ema_acc_fast}
 \title{Returns a datatable to merge accelerometer data back into EMA data}
 \usage{
-ema_acc_fast(ema_file, activity_data, time_stubs = c("15", "30", "60", "120"),
-  activity_types = c("VALID", "NONVALID", "MOD", "VIG", "SED", "LIGHT",
-  "MVPA", "MVPA_BOUT", "ACTIVITY"))
+ema_acc_fast(ema_file, activity_data, time_stubs = c("15", "30", "60",
+  "120"), activity_types = c("VALID", "NONVALID", "MOD", "VIG", "SED",
+  "LIGHT", "MVPA", "MVPA_BOUT", "ACTIVITY"), cut_dataset_start = 0)
 }
 \arguments{
-\item{ema_file}{A csv file with three columns, id, fulltime, and index}
+\item{ema_file}{A csv file with three columns, id, fulltime, and index in that specific order}
 
 \item{activity_data}{An \code{acc_ageadjusted} data.table}
 
 \item{time_stubs}{Time windows to use}
 
 \item{activity_types}{Types of activity from \code{acc_ageadjusted} data.table}
+
+\item{cut_dataset_start}{the number of timea to split the ema dataset, this might be needed for very large studies or slow computers}
 }
 \value{
 A data.table with windows appended to ema_stubs file
 }
 \description{
 Returns a datatable to merge accelerometer data back into EMA data
-}
-\examples{
-ema_acc_table <- ema_acc[ema_stubs, activity_data]
-
 }

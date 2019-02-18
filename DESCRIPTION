@@ -1,13 +1,17 @@
 Package: ActiPro
 Type: Package
 Title: Process files created by ActiGraph Link ActiLife
-Version: 0.1.0
+Version: 1.0.0
 Author: Eldin Dzubur, PhD
 Maintainer: Eldin Dzubur, PhD <eldind@gmail.com>
-Description: This package uses 
-    Use four spaces when indenting paragraphs within the Description.
-License: GNU AGPLv3
+Description: This package takes standard Actigraph data, as either CSV or AGD files, and outputs activity data. 
+    It can also merge this data to ecological momentary assessment windows to produce time-linked windows for data analysis.
+    Lastly, it is able to produce novel accelerometer data based on findings from Keadle et. al. originally generated with 
+    Activpal accelerometers.
+    Note: This software contains some code designed to interface with data produced by the University of Southern 
+    California Real-time Eating, Activity, and Children's Health (REACH), such as the reach_adapter function.
+License: GPL-3 + file LICENSE
 Encoding: UTF-8
 LazyData: true
-Imports: plyr, progress, parallel, foreach, doParallel, iterators, data.table
-RoxygenNote: 6.0.1
+Imports: plyr, progress, parallel, foreach, doParallel, iterators, data.table, reldist, eeptools, RSQLite, DBI
+RoxygenNote: 6.1.1

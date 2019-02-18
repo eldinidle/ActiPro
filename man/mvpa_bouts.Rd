@@ -21,7 +21,3 @@ A vector that fits in the \code{acc_ageadjusted} data.table
 \description{
 Generates vector of continuous MVPA bouts
 }
-\examples{
-acc_ageadjusted[, mvpa_bout := function(acc_ageadjusted, 0, 0, 600)
-
-}

@@ -5,30 +5,27 @@
 \title{Produce an activity dataset from raw data}
 \usage{
 acc_ageadjusted(folder_location, age_data_file, nhanes_nonwear = TRUE,
-  id_length = 7, agdFile = FALSE, dataTable = FALSE, metaData = TRUE)
+  id_length = 7, agdFile = FALSE, dataTable = FALSE,
+  metaData = TRUE)
 }
 \arguments{
-\item{folder_location}{location of \strong(.csv) files}
+\item{folder_location}{location of .csv or agd files}
 
-\item{age_data_file}{two column \strong(.csv) file containing \strong(id) and \strong(age)}
+\item{age_data_file}{two column .csv file containing id and age}
 
 \item{nhanes_nonwear}{= TRUE, use NHANES non-wear thresholds}
 
-\item{id_length}{= 7, length of \strong(id) variable in \strong(age_data_file)}
+\item{id_length}{= 7, length of id variable in age_data_file}
 
-\item{agdFile}{= FALSE, agd file, not csv, if TRUE, overrides \strong(dataTable) and \strong(metaData) settings}
+\item{agdFile}{= FALSE, agd file, not csv, if TRUE, overrides \code{dataTable} and \code{metaData} settings}
 
 \item{dataTable}{= FALSE, datatable format, post-processed with ActiLife}
 
-\item{metaData}{= TRUE, presence of metadata in headers of \strong(.csv) file}
+\item{metaData}{= TRUE, presence of metadata in headers of csv file}
 }
 \value{
 A data.table containing a variety of activity fields and wear time
 }
 \description{
 Produce an activity dataset from raw data
-}
-\examples{
-acc <- acc_ageadjusted(folder_location, age_data_file, TRUE, 7, FALSE, TRUE)
-
 }
