@@ -1,0 +1,38 @@
+---
+output: github_document
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, echo = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "README-"
+)
+```
+
+# ActiPro
+
+The goal of ActiPro is to provide a free and easy-to-use accelerometer processing code specifically for studies using
+sensors in tandem with smartphone surveys (i.e., ecological momentary assessment). Actipro started a side project on
+Stata in 2012 and has since evolved to include novel paramters of physical actvitiy that show promise in energy-balance
+behavior research.
+
+## Installation
+
+You can install ActiPro from github with:
+
+```{r gh-installation, eval = FALSE}
+# install.packages("devtools")
+devtools::install_github("eldinidle/ActiPro")
+```
+
+## Example
+
+You will need your own folder with AGD files to run basic sample code. As such, we currently do not have any available
+examples to run. The code itself, however, is straightforward. 
+
+```{r example}
+## basic example code
+```
