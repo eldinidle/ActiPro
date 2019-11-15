@@ -10,6 +10,7 @@
 #' @import eeptools
 #' @import reldist
 #' @import readxl
+#' @import lubridate
 
 
 #    ActiPro, an R package to process data from ActiGraph output
