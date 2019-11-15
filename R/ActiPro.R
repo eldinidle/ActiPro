@@ -9,6 +9,7 @@
 #' @import DBI
 #' @import eeptools
 #' @import reldist
+#' @import readxl
 
 
 #    ActiPro, an R package to process data from ActiGraph output
@@ -319,6 +320,32 @@ sedentary_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE, valid_on
   # Using reldist and gini
   sed_gini <- day_bouts[, list(sed_gini = gini(sed_event_length)), by = list(id,fulldate)]
 
+  # Generate datatable with only shorter sed bouts, then create sed_bout_extralong variables
+  sed_bouts <- day_bouts[sed_event_length < 30 & sed_event_length > 0 ]
+  sed_bout_short_min <- sed_bouts[, list(sed_bout_short_min = sum(sed_event_length, na.rm = TRUE)),
+                                      by = list(id,fulldate)]
+  sed_bout_short_min <- merge(temp_days,sed_bout_short_min,by = c("id","fulldate"), all = TRUE)
+  sed_bout_short_min[is.na(sed_bout_short_min), sed_bout_short_min := 0]
+
+  sed_bout_short_count <- sed_bouts[, list(sed_bout_short_count = sum(uniques, na.rm = TRUE)),
+                                        by = list(id,fulldate)]
+  sed_bout_short_count <- merge(temp_days,sed_bout_short_count,by = c("id","fulldate"), all = TRUE)
+  sed_bout_short_count[is.na(sed_bout_short_count), sed_bout_short_count := 0]
+
+
+  # Generate datatable with only extra long sed bouts, then create sed_bout_extralong variables
+  sed_bouts <- day_bouts[sed_event_length >= 60]
+  sed_bout_extralong_min <- sed_bouts[, list(sed_bout_extralong_min = sum(sed_event_length, na.rm = TRUE)),
+                                 by = list(id,fulldate)]
+  sed_bout_extralong_min <- merge(temp_days,sed_bout_extralong_min,by = c("id","fulldate"), all = TRUE)
+  sed_bout_extralong_min[is.na(sed_bout_extralong_min), sed_bout_extralong_min := 0]
+
+  sed_bout_extralong_count <- sed_bouts[, list(sed_bout_extralong_count = sum(uniques, na.rm = TRUE)),
+                                   by = list(id,fulldate)]
+  sed_bout_extralong_count <- merge(temp_days,sed_bout_extralong_count,by = c("id","fulldate"), all = TRUE)
+  sed_bout_extralong_count[is.na(sed_bout_extralong_count), sed_bout_extralong_count := 0]
+
+
   # Generate datatable with only long sed bouts, then create sed_bout_long variables
   sed_bouts <- day_bouts[sed_event_length < 60 & sed_event_length >= 30]
   sed_bout_long_min <- sed_bouts[, list(sed_bout_long_min = sum(sed_event_length, na.rm = TRUE)),
@@ -350,8 +377,12 @@ sedentary_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE, valid_on
                        sed_95_percentile,
                        sed_alpha,
                        sed_gini,
+                       sed_bout_short_min,
+                       sed_bout_short_count,
                        sed_bout_long_min,
-                       sed_bout_long_count)
+                       sed_bout_long_count,
+                       sed_bout_extralong_min,
+                       sed_bout_extralong_count)
 
   return_sed <- Reduce(function(...) merge(..., by = c("id","fulldate"), all = T), sed_features)
 
@@ -567,6 +598,11 @@ light_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE, valid_only =
   temp_merge[is.na(count_10_bouts), count_10_bouts := 0]
   temp_merge[is.na(count_30_bouts), count_30_bouts := 0]
 
+  # Creating bout counts
+  light_boutcount_over_5 <- temp_merge[,list(id,fulldate,light_boutcount_over_5 = count_5_bouts/1)]
+  light_boutcount_over_10 <- temp_merge[,list(id,fulldate,light_boutcount_over_10 = count_10_bouts/1)]
+  light_boutcount_over_30 <- temp_merge[,list(id,fulldate,light_boutcount_over_30 = count_30_bouts/1)]
+
   # Creating ratios
   light_ratio_over_5 <- temp_merge[,list(id,fulldate,light_ratio_over_5 = count_5_bouts/count_day_bouts)]
   light_ratio_over_10 <- temp_merge[,list(id,fulldate,light_ratio_over_10 = count_10_bouts/count_day_bouts)]
@@ -595,6 +631,9 @@ light_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE, valid_only =
   sed_features <- list(light_total,
                        light_events,
                        light_event_length,
+                       light_boutcount_over_5,
+                       light_boutcount_over_10,
+                       light_boutcount_over_30,
                        light_ratio_over_5,
                        light_ratio_over_10,
                        light_ratio_over_30,
@@ -805,6 +844,10 @@ mvpa_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE, valid_only = 
                                             list(length = mean(mvpa_bout_length, na.rm = TRUE)),
                                             by = list(id,fulldate,unique_mvpa_bout)]
   unique_mvpa_total_over_10[, uniques := 1]
+  unique_mvpa_total_over_20 <- minute_bouts[mvpa_bout_length >= (20) & non_mvpa == FALSE,
+                                            list(length = mean(mvpa_bout_length, na.rm = TRUE)),
+                                            by = list(id,fulldate,unique_mvpa_bout)]
+  unique_mvpa_total_over_20[, uniques := 1]
   unique_guide_total_over_10 <- minute_bouts[mvpa_new_length >= (10) & mvpa_guideline_bout == TRUE,
                                              list(length = mean(mvpa_new_length, na.rm = TRUE)),
                                              by = list(id,fulldate,mvpa_new_index)]
@@ -824,17 +867,20 @@ mvpa_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE, valid_only = 
                                             by = list(id, fulldate)]
   count_10_bouts <- unique_mvpa_total_over_10[, list(count_10_bouts = sum(uniques)),
                                               by = list(id, fulldate)]
+  count_20_bouts <- unique_mvpa_total_over_20[, list(count_20_bouts = sum(uniques)),
+                                              by = list(id, fulldate)]
   count_10_long_bouts <- unique_guide_total_over_10[, list(count_10_long_bouts = sum(uniques)),
                                                     by = list(id, fulldate)]
   count_20_long_bouts <- unique_guide_total_over_20[, list(count_20_long_bouts = sum(uniques)),
                                                     by = list(id, fulldate)]
-  count_list <- list(temp_days,count_day_bouts, count_2_bouts, count_5_bouts, count_10_bouts,
+  count_list <- list(temp_days,count_day_bouts, count_2_bouts, count_5_bouts, count_10_bouts, count_20_bouts,
                      count_10_long_bouts,count_20_long_bouts)
   temp_merge <- Reduce(function(...) merge(..., by = c("id","fulldate"), all = T), count_list)
   temp_merge[is.na(count_day_bouts), count_day_bouts := 0]
   temp_merge[is.na(count_2_bouts), count_2_bouts := 0]
   temp_merge[is.na(count_5_bouts), count_5_bouts := 0]
   temp_merge[is.na(count_10_bouts), count_10_bouts := 0]
+  temp_merge[is.na(count_20_bouts), count_20_bouts := 0]
   temp_merge[is.na(count_10_long_bouts), count_10_long_bouts := 0]
   temp_merge[is.na(count_20_long_bouts), count_20_long_bouts := 0]
 
@@ -842,8 +888,17 @@ mvpa_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE, valid_only = 
   mvpa_ratio_over_2 <- temp_merge[,list(id,fulldate,mvpa_ratio_over_2 = count_2_bouts/count_day_bouts)]
   mvpa_ratio_over_5 <- temp_merge[,list(id,fulldate,mvpa_ratio_over_5 = count_5_bouts/count_day_bouts)]
   mvpa_ratio_over_10 <- temp_merge[,list(id,fulldate,mvpa_ratio_over_10 = count_10_bouts/count_day_bouts)]
+  mvpa_ratio_over_20 <- temp_merge[,list(id,fulldate,mvpa_ratio_over_20 = count_20_bouts/count_day_bouts)]
   mvpa_ratio_long_10 <- temp_merge[,list(id,fulldate,mvpa_ratio_long_10 = count_10_long_bouts/count_day_bouts)]
   mvpa_ratio_long_20 <- temp_merge[,list(id,fulldate,mvpa_ratio_long_20 = count_20_long_bouts/count_day_bouts)]
+
+  # Creating bout counts
+  mvpa_boutcount_over_2 <- temp_merge[,list(id,fulldate,mvpa_boutcount_over_2 = count_2_bouts/1)]
+  mvpa_boutcount_over_5 <- temp_merge[,list(id,fulldate,mvpa_boutcount_over_5 = count_5_bouts/1)]
+  mvpa_boutcount_over_10 <- temp_merge[,list(id,fulldate,mvpa_boutcount_over_10 = count_10_bouts/1)]
+  mvpa_boutcount_over_20 <- temp_merge[,list(id,fulldate,mvpa_boutcount_over_20 = count_20_bouts/1)]
+  mvpa_boutcount_long_10 <- temp_merge[,list(id,fulldate,mvpa_boutcount_long_10 = count_10_long_bouts/1)]
+  mvpa_boutcount_long_20 <- temp_merge[,list(id,fulldate,mvpa_boutcount_long_20 = count_20_long_bouts/1)]
 
   #Gini and alpha for MVPA
   mvpa_gini <- day_bouts[, list(mvpa_gini = gini(mvpa_event_length)), by = list(id,fulldate)]
@@ -862,8 +917,15 @@ mvpa_features <- function(acc_ageadjusted, cut = TRUE, ext = TRUE, valid_only = 
                         mvpa_ratio_over_2,
                         mvpa_ratio_over_5,
                         mvpa_ratio_over_10,
+                        mvpa_ratio_over_20,
                         mvpa_ratio_long_10,
                         mvpa_ratio_long_20,
+                        mvpa_boutcount_over_2,
+                        mvpa_boutcount_over_5,
+                        mvpa_boutcount_over_10,
+                        mvpa_boutcount_over_20,
+                        mvpa_boutcount_long_10,
+                        mvpa_boutcount_long_20,
                         mvpa_met_max,
                         mvpa_guideline_met_hrs,
                         mvpa_guideline_bouts,
@@ -1130,7 +1192,7 @@ acc_nonwear_agd <- function(file_location, nhanes = TRUE){
   } else if(epoch == 60){
     valid_days[, valid_day := as.integer(time > 600)]
   } else if(epoch == 10){
-    valid_days[, valid_day := as.integer(time > 200)]
+    valid_days[, valid_day := as.integer(time > 3600)]
   }
   valid_days[, valid_day_sum := sum(valid_day)]
   setnames(valid_days,"time","valid_day_length")
@@ -1545,7 +1607,7 @@ ema_acc_fast <- function(ema_file, activity_data,
   ema_datasets <- split(ema_stubs, by = "split")
 
   expand_sec <- "60 sec" # paste(as.character(min(activity_data$epoch, na.rm = TRUE)),"sec")
-  multiplier_sec <- 1 # as.integer(60L/min(activity_data$epoch))
+  multiplier_sec <- 1 #as.integer(60L/min(activity_data$epoch))
 
   keycols <- c("id","fulltime")
   setorderv(activity_data,keycols)
@@ -1627,11 +1689,11 @@ ema_acc_fast <- function(ema_file, activity_data,
 
     for (ts in time_stubs) {
       ema_stubs2[, expand_times := (as.integer(ts)*multiplier_sec)]
-      ema_stubs2[, low_time := as.POSIXct(round(time - as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
-      ema_stubs2[, high_time := as.POSIXct(round(time,"min"), tz = "America/Los_Angeles")]
-      expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]][,
-                                                                       fulltime := seq(low_time , high_time, by = expand_sec),
-                                                                       by = .(low_time, high_time)][]
+      ema_stubs2[, low_time := as.POSIXct(round_date(time - as.integer(ts)*60L,expand_sec) + 60L/multiplier_sec, tz = "America/Los_Angeles")]
+      ema_stubs2[, high_time := as.POSIXct(round_date(time,expand_sec) , tz = "America/Los_Angeles")]
+      pre_expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]]
+      expand <- pre_expand[, fulltime := seq(low_time, high_time, by = expand_sec),
+                                                                       by = .(ACC_STABLE_STUB,low_time, high_time)][]
       setorderv(expand,c("id","fulltime"))
       setkeyv(expand,c("id","fulltime"))
       for (type in activity_types){
@@ -1642,7 +1704,7 @@ ema_acc_fast <- function(ema_file, activity_data,
         act_var <- paste("i.",type_var(type),sep="")
         merged <- expand[activity_data2, nomatch = 0, with = FALSE, j =
                            c('id','fulltime',act_var,'divider','id','ACC_STABLE_STUB')]
-        merged[, return_var := as.integer(get(act_var))]
+        merged[, return_var := (get(act_var))]
         return <- merged[, .(add_var = sum(return_var/divider, na.rm = TRUE)), by=.(id, ACC_STABLE_STUB)]
         #setnames(return,"add_var",eval(before))
         ema_stubs[return, on = c('ACC_STABLE_STUB'), eval(before) := i.add_var]
@@ -1652,11 +1714,19 @@ ema_acc_fast <- function(ema_file, activity_data,
 
     for (ts in time_stubs) {
       ema_stubs2[, expand_times := (as.integer(ts)*multiplier_sec)]
-      ema_stubs2[, low_time := as.POSIXct(round(time,"min"), tz = "America/Los_Angeles")]
-      ema_stubs2[, high_time := as.POSIXct(round(time + as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
-      expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]][,
-                                                                       fulltime := seq(low_time , high_time, by = expand_sec),
-                                                                       by = .(low_time, high_time)][]
+      ema_stubs2[, low_time := as.POSIXct(round_date(time,expand_sec), tz = "America/Los_Angeles")]
+      ema_stubs2[, high_time := as.POSIXct(round_date(time + as.integer(ts)*60L,expand_sec) - 60L/multiplier_sec, tz = "America/Los_Angeles")]
+      pre_expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]]
+      expand <- pre_expand[, fulltime := seq(low_time, high_time, by = expand_sec),
+                           by = .(ACC_STABLE_STUB,low_time, high_time)][]
+
+      #ema_stubs2[, expand_times := (as.integer(ts)*multiplier_sec)]
+      #ema_stubs2[, low_time := as.POSIXct(round(time,"min"), tz = "America/Los_Angeles")]
+      #ema_stubs2[, high_time := as.POSIXct(round(time + as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
+      #expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]][,
+      #                                                                 fulltime := seq(low_time , high_time, by = expand_sec),
+      #                                                                 by = .(ACC_STABLE_STUB,low_time, high_time)][]
+
       setorderv(expand,c("id","fulltime"))
       setkeyv(expand,c("id","fulltime"))
       for (type in activity_types){
@@ -1667,38 +1737,45 @@ ema_acc_fast <- function(ema_file, activity_data,
         act_var <- paste("i.",type_var(type),sep="")
         merged <- expand[activity_data2, nomatch = 0, with = FALSE, j =
                            c('id','fulltime',act_var,'divider','id','ACC_STABLE_STUB')]
-        merged[, return_var := as.integer(get(act_var))]
+        merged[, return_var := (get(act_var))]
         return <- merged[, .(add_var = sum(return_var/divider, na.rm = TRUE)), by=.(id, ACC_STABLE_STUB)]
         #setnames(return,"add_var",eval(before))
         ema_stubs[return, on = c('ACC_STABLE_STUB'), eval(before) := i.add_var]
       #  ema_progress$tick()
       }
     }
-
-    for (ts in time_stubs) {
-      ema_stubs2[, expand_times := (as.integer(ts)*2L*multiplier_sec)]
-      ema_stubs2[, low_time := as.POSIXct(round(time - as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
-      ema_stubs2[, high_time := as.POSIXct(round(time + as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
-      expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]][,
-                                                                       fulltime := seq(low_time , high_time, by = expand_sec),
-                                                                       by = .(low_time, high_time)][]
-      setorderv(expand,c("id","fulltime"))
-      setkeyv(expand,c("id","fulltime"))
-      for (type in activity_types){
-        print(ts)
-        print(type)
-        print("WINDOW")
-        before <- paste(type,"_",ts,"_WINDOW", sep="")
-        act_var <- paste("i.",type_var(type),sep="")
-        merged <- expand[activity_data2, nomatch = 0, with = FALSE, j =
-                           c('id','fulltime',act_var,'divider','id','ACC_STABLE_STUB')]
-        merged[, return_var := as.integer(get(act_var))]
-        return <- merged[, .(add_var = sum(return_var/divider, na.rm = TRUE)), by=.(id, ACC_STABLE_STUB)]
-        #setnames(return,"add_var",eval(before))
-        ema_stubs[return, on = c('ACC_STABLE_STUB'), eval(before) := i.add_var]
-      #  ema_progress$tick()
-      }
-    }
+#
+#     for (ts in time_stubs) {
+#       ema_stubs2[, expand_times := (as.integer(ts)*2L*multiplier_sec)]
+#       ema_stubs2[, low_time := as.POSIXct(round_date(time - as.integer(ts)*60L,expand_sec), tz = "America/Los_Angeles")]
+#       ema_stubs2[, high_time := as.POSIXct(round_date(time + as.integer(ts)*60L,expand_sec), tz = "America/Los_Angeles")]
+#       pre_expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]]
+#       expand <- pre_expand[, fulltime := seq(low_time, high_time, by = expand_sec),
+#                            by = .(ACC_STABLE_STUB,low_time, high_time)][]
+#
+#       #ema_stubs2[, expand_times := (as.integer(ts)*2L*multiplier_sec)]
+#       #ema_stubs2[, low_time := as.POSIXct(round(time - as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
+#       #ema_stubs2[, high_time := as.POSIXct(round(time + as.integer(ts)*60L,"min"), tz = "America/Los_Angeles")]
+#       #expand <- ema_stubs2[!is.na(time), .SD[rep(1:.N, expand_times)]][,
+#                                                                       # fulltime := seq(low_time , high_time, by = expand_sec),
+#                                                                      #  by = .(ACC_STABLE_STUB,low_time, high_time)][]
+#       setorderv(expand,c("id","fulltime"))
+#       setkeyv(expand,c("id","fulltime"))
+#       for (type in activity_types){
+#         print(ts)
+#         print(type)
+#         print("WINDOW")
+#         before <- paste(type,"_",ts,"_WINDOW", sep="")
+#         act_var <- paste("i.",type_var(type),sep="")
+#         merged <- expand[activity_data2, nomatch = 0, with = FALSE, j =
+#                            c('id','fulltime',act_var,'divider','id','ACC_STABLE_STUB')]
+#         #merged[, return_var := (get(act_var))]
+#         return <- merged[, .(add_var = sum(return_var/divider, na.rm = TRUE)), by=.(id, ACC_STABLE_STUB)]
+#         #setnames(return,"add_var",eval(before))
+#         ema_stubs[return, on = c('ACC_STABLE_STUB'), eval(before) := i.add_var]
+#       #  ema_progress$tick()
+#       }
+#     }
 
     dataset_return <- cbind(list(dataset_return,ema_stubs))
   }
@@ -1710,3 +1787,147 @@ ema_acc_fast <- function(ema_file, activity_data,
   return(dataset_return)
 }
 
+actiwatch_nonwear <- function(acc_raw, epoch = 30, nonwear_break_value = 100, valid_day_minutes = 600){
+  nhanes_break <- nonwear_break_value/(60/epoch)
+
+  acc_raw[, non_wear := as.integer(Activity == 0)]
+  acc_raw[, non_wear_break := as.integer(!non_wear)]
+  acc_raw[, non_wear_length := bout_sequence(acc_raw[,non_wear],acc_raw[,non_wear_break],epoch)]
+  acc_raw[, non_wear_new := ifelse((non_wear_length <= 120
+                                    & non_wear == 0
+                                    & Activity < nhanes_break),1
+                                   ,non_wear)]
+  acc_raw[, non_wear_new_break := as.integer(!non_wear_new)]
+  acc_raw[, non_wear_length_new := bout_sequence(non_wear_new, non_wear_new_break, epoch)]
+  acc_raw[, non_wear_bout := as.integer(non_wear_length_new > 3600 & non_wear_new == 1)]
+  setnames(acc_raw,"non_wear_bout","nonwear")
+  acc_raw[ , c("non_wear","non_wear_break",
+               "non_wear_length", "non_wear_new",
+               "non_wear_new_break","non_wear_length_new") := NULL]
+  acc_raw[, wear := as.integer(!nonwear)]
+
+  acc_raw[, fulldate := as.Date(as.character(as.POSIXct(fulltime, origin = "1970-01-01", tz = "America/Los_Angeles")))]
+  valid_days <- data.table(ddply(acc_raw,~fulldate,summarise,time=sum(wear, na.rm = TRUE)))
+
+  valid_days[, valid_day := as.integer(time > valid_day_minutes*(60/epoch))]
+
+  valid_days[, valid_day_sum := sum(valid_day, na.rm = TRUE)]
+  setnames(valid_days,"time","valid_day_length")
+  acc <- merge(x = acc_raw, y= valid_days, by = "fulldate" , all.x = TRUE)
+  acc[,epoch := epoch]
+  return(acc)
+}
+
+
+#' Convert dataset from ActiWatch to Actipro
+#' @name actiwatch_ageadjusted
+#'
+#' @param actiwatch_data actual actiwatch data using Actiwatch read helpers from ActiPro
+#' @param age_data_file age data file for varying ages for cutpoints
+#'
+#' @return A data.table containing the Actipro compatible dataset
+#'
+#'
+#' @export
+actiwatch_ageadjusted <- function(actiwatch_data, age_data_file = NULL){
+  cores=detectCores()
+  if(cores[1]>2){
+    cl <- makeCluster(cores[1]-1)
+  } else {
+    cores <- 2
+    cl <- makeCluster(1)
+  }
+  registerDoParallel(cl)
+
+  idlist <- unique(actiwatch_data$id)
+  nonwear_return <- foreach(idvar = idlist, .combine = rbind,
+                            .packages = c("data.table","plyr","ActiPro")) %dopar% {
+                              actiwatch_nonwear(actiwatch_data[id == idvar])
+                            }
+  if(is.null(age_data_file)){
+    return(nonwear_return)
+  } else {
+    return(process_age(age_data_file,nonwear_return))
+  }
+}
+
+#' Convert dataset from ActiWatch XSLX to Actiwatch R
+#' @name actiwatch_xlsx_merged_reader
+#'
+#' @param actiwatch_filepath filepath of actiwatch data, as multiple XLSX sheets
+#'
+#' @return A data.table containing Actiwatch data, raw
+#'
+#'
+#' @export
+actiwatch_xlsx_merged_reader <- function(actiwatch_filepath){
+  cores=detectCores()
+  if(cores[1]>2){
+    cl <- makeCluster(cores[1]-1)
+  } else {
+    cores <- 2
+    cl <- makeCluster(1)
+  }
+  registerDoParallel(cl)
+
+  pre_return <- foreach(int_sheet = 1:length(excel_sheets(actiwatch_filepath)), .combine = rbind,
+                        .packages = c("readxl")) %dopar% {
+                          pre_read <- read_excel(actiwatch_filepath, sheet = int_sheet, col_names = FALSE, col_types = "text")
+                          if(nrow(pre_read)>0){
+                            locate_identity <- which(pre_read[1] == "Identity:")
+                            subject_id <- as.character(pre_read[2][locate_identity,])
+                            count_lines <- which(pre_read[1] == "Line")
+                            last_line <- count_lines[length(count_lines)] - 1
+                            begin_epochs <- last_line + 1
+                            return_read <- read_excel(actiwatch_filepath, sheet = int_sheet, col_names = FALSE, skip = begin_epochs)
+                            name_read <- read_excel(actiwatch_filepath, sheet = int_sheet, col_names = TRUE, skip = last_line)
+                            cellnames <- colnames(name_read)
+                            colnames(return_read) <- cellnames
+                            return_read$id <- subject_id
+                            return_read
+                          }
+                        }
+  return_data <- as.data.table(pre_return)
+  keep_idta <- return_data[, .(id, date = Date, time = Time, Activity)]
+  keep_idta[, c("dropthis", "time") := tstrsplit(time, " ", fixed=TRUE)]
+  keep_idta[, dropthis := NULL]
+  keep_idta[,fulltime := as.POSIXct(paste(as.character(date),as.character(time),sep=" "),
+                                    format="%Y-%m-%d %H:%M:%S",origin="1970-01-01", tz = "America/Los_Angeles")]
+  dummy_activity_vars <- c("Axis 2","Axis 3", "Steps", "HR","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying")
+  for(i in dummy_activity_vars){
+    keep_idta[, eval(i) := NA]
+  }
+  keep_idta[, Activity := as.integer(Activity)]
+
+}
+
+#' Convert dataset from ActiWatch XSLX to Actiwatch R
+#' @name actiwatch_mergedcsv_reader
+#'
+#' @param actiwatch_filepath filepath of actiwatch data, as a long CSV file
+#'
+#' @return A data.table containing Actiwatch data, raw
+#'
+#'
+#' @export
+actiwatch_mergedcsv_reader <- function(actiwatch_csv_filepath, drop_suffix = 4, id_length = 3){
+  existing_csv <- fread(actiwatch_csv_filepath)
+  keep_list <- c("id","date","time","activity")
+  keep_idta <- existing_csv[, .(id, date, time, Activity = activity)]
+  keep_idta[, c("month", "day", "year") := tstrsplit(date, "/", fixed=TRUE)]
+  keep_idta[, date := paste(sprintf("%02d",as.integer(month)),sprintf("%02d",as.integer(day)),
+                            sprintf("%04d",as.integer(year)), sep = "/")]
+  keep_idta[, c("hour", "min", "sec") := tstrsplit(time, ":", fixed=TRUE)]
+  keep_idta[, time := paste(sprintf("%02d",as.integer(hour)),sprintf("%02d",as.integer(min)),
+                            sprintf("%02d",as.integer(sec)), sep = ":")]
+  keep_idta[, c("month", "day", "year") := NULL]
+  keep_idta[, c("hour", "min", "sec") := NULL]
+  dummy_activity_vars <- c("Axis 2","Axis 3", "Steps", "HR","Lux","Incline Off","Incline Standing", "Incline Sitting", "Incline Lying")
+  for(i in dummy_activity_vars){
+    keep_idta[, eval(i) := NA]
+  }
+  keep_idta[,fulltime := as.POSIXct(paste(as.character(date),as.character(time),sep=" "),
+                                    format="%m/%d/%Y %H:%M:%S",origin="1970-01-01", tz = "America/Los_Angeles")]
+  keep_idta[, id := substr(id,drop_suffix+1,drop_suffix+id_length)]
+  return(keep_idta)
+}
