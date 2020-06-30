@@ -1217,10 +1217,10 @@ acc_nonwear <- function(file_location, nhanes = TRUE, dataTable = FALSE, metaDat
 
     epoch <- (epoch_hour*60*60)+(epoch_minute*60)+epoch_second
   } else {
-    epoch <- acc_raw$fulltime[2]-acc_raw$fulltime[1]
+    epoch <- as.integer(acc_raw$fulltime[2])-as.integer(acc_raw$fulltime[1])
   }
 
-  if(epoch == 30){
+  if(as.integer(epoch) == 30){
     nhanes_break <- 50
   } else if(epoch == 60){
     nhanes_break <- 100
