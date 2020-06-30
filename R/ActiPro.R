@@ -1454,7 +1454,7 @@ mvpa_bouts <- function(acc_ageadjusted, min_break, act_break, bout_length) {
 #' @export
 ema_acc <- function(ema_file, activity_data,
                     time_stubs = c("15","30","60","120"),
-                    activity_types = c("VALID","NONVALID","MOD","VIG","SED","LIGHT","MVPA","MVPA_BOUT","ACTIVITY")){
+                    activity_types = c("VALID","NONVALID","MOD","VIG","SED","LIGHT","MVPA","ACTIVITY")){
   cores=detectCores()
   if(cores[1]>2){
     cl <- makeCluster(cores[1]-1)
@@ -1593,7 +1593,7 @@ ema_acc <- function(ema_file, activity_data,
 #' @export
 ema_acc_fast <- function(ema_file, activity_data,
                          time_stubs = c("15","30","60","120"),
-                         activity_types = c("VALID","NONVALID","MOD","VIG","SED","LIGHT","MVPA","MVPA_BOUT","ACTIVITY"),
+                         activity_types = c("VALID","NONVALID","MOD","VIG","SED","LIGHT","MVPA","ACTIVITY"),
                          cut_dataset_start = 0){
   if(is.null(activity_data) | nrow(activity_data) == 0){
     return(NULL)
