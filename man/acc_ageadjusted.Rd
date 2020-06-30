@@ -6,7 +6,7 @@
 \usage{
 acc_ageadjusted(folder_location, age_data_file, nhanes_nonwear = TRUE,
   id_length = 7, agdFile = FALSE, dataTable = FALSE,
-  metaData = TRUE)
+  metaData = TRUE, adult_age_cutpoints = NULL)
 }
 \arguments{
 \item{folder_location}{location of .csv or agd files}

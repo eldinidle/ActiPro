@@ -1278,7 +1278,8 @@ acc_nonwear <- function(file_location, nhanes = TRUE, dataTable = FALSE, metaDat
 #'
 #'
 #' @export
-acc_ageadjusted <- function(folder_location, age_data_file, nhanes_nonwear = TRUE, id_length = 7, agdFile = FALSE, dataTable = FALSE, metaData = TRUE){
+acc_ageadjusted <- function(folder_location, age_data_file, nhanes_nonwear = TRUE, id_length = 7, agdFile = FALSE, dataTable = FALSE, metaData = TRUE,
+                            adult_age_cutpoints = NULL){
   cores=detectCores()
   if(cores[1]>2){
     cl <- makeCluster(cores[1]-1)
@@ -1335,14 +1336,14 @@ acc_ageadjusted <- function(folder_location, age_data_file, nhanes_nonwear = TRU
 
   acc_full[, id := tolower(substr(file_id,1,id_length))]
 
-  acc_full_age <- process_age(age_data_file, acc_full)
+  acc_full_age <- process_age(age_data_file, acc_full,adult_age_cutpoints)
 
 
   stopCluster(cl)
   return(acc_full_age)
 }
 
-process_age <- function(age_data_file, acc_full){
+process_age <- function(age_data_file, acc_full, adult_age_cutpoints){
   age_data <- fread(age_data_file, stringsAsFactors = FALSE, colClasses=c(rep("character",2)))
   age_data_date <- nchar(age_data[1,2]) == 10
   if(age_data_date){
@@ -1357,17 +1358,22 @@ process_age <- function(age_data_file, acc_full){
     age_data[, age := as.integer(age)]
   }
   age_data[, id := tolower(id)]
-  age_data[age > 17 , age := 18L] # adult support override
+  if(is.null(adult_age_cutpoints)){
+    age_data[age > 17 , age := 18L] # adult support override
+    age <- as.integer(c(6,7,8,9,10,11,12,13,14,15,16,17,18))
+    div_mod <- as.integer(c(1400, 1515,1638,1770,1910,2059,2220,2393,2580,2781,3000,3239,2020))
+    div_vig <- as.integer(c(3758,3947,4147,4360,4588,4832,5094,5375,5679,6007,6363,6751,5999))
+    age_acc <- data.table(age,div_mod,div_vig)
 
-  age <- as.integer(c(6,7,8,9,10,11,12,13,14,15,16,17,18))
-  div_mod <- as.integer(c(1400, 1515,1638,1770,1910,2059,2220,2393,2580,2781,3000,3239,2020))
-  div_vig <- as.integer(c(3758,3947,4147,4360,4588,4832,5094,5375,5679,6007,6363,6751,5999))
-  age_acc <- data.table(age,div_mod,div_vig)
+    age_merge <- merge(x = age_data, y= age_acc, by = "age" , all = FALSE)
 
-  age_merge <- merge(x = age_data, y= age_acc, by = "age" , all = FALSE)
+    age_merge[age > 17, div_mod := 2020L]
+    age_merge[age > 17, div_vig := 5999L]
+  } else {
+    setnames(adult_age_cutpoints,colnames(adult_age_cutpoints),c("age","div_mod","div_vig"))
+    age_merge <- merge(x = age_data, y= adult_age_cutpoints, by = "age" , all = FALSE)
+  }
 
-  age_merge[age > 17, div_mod := 2020L]
-  age_merge[age > 17, div_vig := 5999L]
 
   acc_full_age <- merge(x = acc_full, y= age_merge, by = "id" , all = FALSE)
 
